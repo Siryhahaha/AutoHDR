@@ -738,9 +738,60 @@ def main(data, opt):
     del unet
     del generator
     torch.cuda.empty_cache()
+    # import pdb
+    # pdb.set_trace()
+    
+# ###标识
 
+    # yield "正在标识结果...", None
+    image_to_repair_mark = restore_img.copy()
+    draw = ImageDraw.Draw(image_to_repair_mark)
 
-    return restore_img, combined
+    try:
+        font = ImageFont.truetype("demo_utils/font/KaiXinSongA.ttf", 20)  # 这里使用系统字体"宋体"
+    except IOError:
+        font = ImageFont.load_default() 
+
+    colors = ['blue', 'green', 'purple', 'orange', 'brown', 'cyan', 'magenta', 'yellow', 'pink', 'gray']
+    for idx,patch in tqdm(enumerate(patches)): 
+        #图像块坐标
+        xmin, ymin, xmax, ymax = patch[1]['position']
+        color = colors[idx % len(colors)]
+        # 绘制边框
+        draw.rectangle([xmin, ymin, xmax, ymax], outline=color, width=2)
+        label = f"Patch {idx+1} ({patch_size}x{patch_size})"
+        draw.text((xmin, ymin), label, fill=color, font=font)
+        #处理修复字符
+        for bbox_name in patch[1]['intersect_bboxes']:
+            bbox_info = extra_num_ocr_prob_dict[bbox_name]
+            bx_min, by_min, bw, bh = bbox_info['bbox']
+            bx_max = bx_min + bw; by_max = by_min + bh
+            
+            # # 确保坐标在patch范围内
+            # rel_x_min = max(0, int(bx_min - xmin))
+            # rel_y_min = max(0, int(by_min - ymin))
+            # rel_x_max = min(patch_size, int(bx_max - xmin))
+            # rel_y_max = min(patch_size, int(by_max - ymin))
+            
+            # 只有当有效区域大于0时才绘制
+            # import pdb
+            # pdb.set_trace()
+            if rel_x_max > rel_x_min and rel_y_max > rel_y_min:
+                combined_mask[rel_y_min:rel_y_max, rel_x_min:rel_x_max] = 255      
+                #绘制字框
+                draw.rectangle([bx_min, by_min, bx_max, by_max], outline=colors[(idx+1) % len(colors)], width=2)
+                #绘制字
+                text = bbox_info['txt']
+                # import pdb
+                # pdb.set_trace()
+                draw.text((bx_min, by_min), text, fill='red', font=font)
+    
+    # yield "标识完成",None
+    # yield "标识完成",image_to_repair_mark
+    
+# ###
+
+    return image_to_repair_mark, combined
 
 if __name__ == '__main__':
 
