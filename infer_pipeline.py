@@ -474,6 +474,8 @@ def main(data, opt):
     del tokenizer
     torch.cuda.empty_cache()
 
+    
+
     ############### 加载修复模型 ###################
     unet = UNet2DModel.from_pretrained(pretrained_model_name_or_path='ckpt/unet')
     unet = unet.to(device)

@@ -1,3 +1,5 @@
+# 这个文件被用来做flask的api调用，main被拆成了三个函数：localize、predict、restore
+
 from mmdet.apis import init_detector, inference_detector
 import os
 import cv2
@@ -34,6 +36,10 @@ from zhconv import convert
 from utils_pipeline import calculate_iou, xyxy2xywh, rank_probability_weighted_fusion, get_topk_multi_tokens, model_init, visualize_boxes, render_char_with_font_T, concatenate_images_vertical, render_char_with_font_L, is_char_in_font, invert_image, restore_image
 from scipy.ndimage import binary_dilation, binary_fill_holes
 from scipy.ndimage import label as ndimage_label
+
+###################################
+from demo_flask_utils.connect.shared_vars import *
+###################################
 
 cc = OpenCC('s2t')
 ss = OpenCC('t2s')
@@ -93,34 +99,24 @@ def detect(
 
     return res_dic
 
-def main(data, opt):
-
-    yield "开始修复...", None
-
-    data_path_api = 'api_test.png'
-    data.save(data_path_api)
-    data = data_path_api
-    opt.data = data
+def localize(device, opt, img_invert_path):
 
     if opt.seed is not None:
         set_seed(opt.seed)
     
-    save_path = './results'
+    # save_path = './results'
 
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
+    # if not os.path.exists(save_path):
+    #     os.makedirs(save_path)
 
-    img_dir = os.path.join(save_path, 'img')
-    if not os.path.exists(img_dir):
-        os.makedirs(img_dir)
+    # img_dir = os.path.join(save_path, 'img')
+    # if not os.path.exists(img_dir):
+    #     os.makedirs(img_dir)
 
-    combined_dir = os.path.join(save_path, 'combined')
-    if not os.path.exists(combined_dir):
-        os.makedirs(combined_dir)
+    # combined_dir = os.path.join(save_path, 'combined')
+    # if not os.path.exists(combined_dir):
+    #     os.makedirs(combined_dir)
 
-
-    yield "加载模型...", None
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")   
     # 加载破损检测模型 dino
     model_det_vague = init_detector(opt.vague_det_config, opt.vague_det_weights, device=device)
     dicp = 'ckpt/dic_31524.txt'
@@ -128,23 +124,14 @@ def main(data, opt):
     det_model = attempt_load(opt.ocr_det_weights, map_location=device)
     reg_model = vit_base_im96_patch8(num_classes=31524)
     reg_model = torch.nn.DataParallel(reg_model).to(device)
-    # reg_model.load_state_dict(torch.load('ckpt/ocr_reg.pth')['state_dict'])
-    reg_model.load_state_dict(torch.load('./epoch79.pth')['state_dict'])
+    reg_model.load_state_dict(torch.load('ckpt/ocr_reg.pth')['state_dict'])
 
-    #img = Image.open(data).convert('RGB')
-    #img = data if isinstance(data, Image.Image) else Image.open(data).convert('RGB')
-    yield "OSTU二值化...", None
-
-    img = Image.open(data).convert('RGB')
-    img_invert = invert_image(img)
-    img_invert_path = 'tmp_img/api_tmp.jpg'
-    img_invert.save(img_invert_path)
     img_invert_gray = Image.open(img_invert_path).convert('L').convert('RGB')
 
     print('detecting...')
-    yield "OCR检测...", None
+
     ##### 这里是破损检测模型
-    # 破损检测模型是灰度输入的
+
     results = inference_detector(model_det_vague, np.array(img_invert_gray))
     # 获取预测框、分数和标签
     boxes = results.pred_instances.bboxes.cpu().numpy()
@@ -176,7 +163,6 @@ def main(data, opt):
     im = cv2.imread(img_invert_path, 0)
 
     print('recognizing...')
-    yield "OCR识别...", None    
 
     # 这里首先对OCR检测框进行识别
     char_ims = []
@@ -192,16 +178,6 @@ def main(data, opt):
         x1, y1, x2, y2 = [round(float(k)) for k in line]
         char_ims.append(im[y1:y2, x1:x2])
     vague_output_chars, vague_output_probs = batch_char_recog(reg_model, device, char_dict, char_ims, bs=opt.reg_batch_size)
-
-    # # 这一步只在OCR检测不准的时候用
-    # chars = {}
-    # to_remove_detect_result = set()
-    # for idx, (char, prob) in enumerate(zip(output_chars, output_probs)):
-    #     chars[idx] = char[0]
-    #     # 如果prob[0]小于0.2，则认为这里没有字符，删除detect_result中对应的结果
-    #     if prob[0] < 0.7:
-    #         # 找到对应的detect_result中的结果
-    #         to_remove_detect_result.add(idx)
 
     # 坐标作为key 字符和置信度作为value 后面要用
     OCR_result = {}
@@ -224,7 +200,6 @@ def main(data, opt):
                 to_remove.add(idx)
     
     print('arrange...')
-    yield "处理阅读顺序...", None
 
     # 创建一个新的结果列表来拼接 这个用来做阅读顺序的，只是一个list
     final_results = []
@@ -241,19 +216,63 @@ def main(data, opt):
     h, w = im.shape[:2]
     out_box_li = get_sort(final_results, h, w)
 
+
+    ############################
+    # import pdb;pdb.set_trace()
+
+    #     # 统计三类框
+    # initial_ocr_count = len(ocr_det_bbox)               # OCR_result 原始框数
+    # initial_vague_count = len(vague_det_bbox)           # vague_OCR_result 原始框数
+    # removed_ocr_count = len(to_remove)                  # 被 IoU 合并去掉的 OCR 框数
+    # # 最终参与排列的总框数
+    # final_count = len(out_box_li)
+
+    # # 分类计数
+    # count_normal_ocr = 0        # 只走普通 OCR 识别的
+    # count_vague_high = 0        # vague 里高置信度当作普通字符的
+    # count_vague_low = 0         # degraded（低置信度）要补全的
+
+    # for box in out_box_li:
+    #     key = str(box)
+    #     if key in OCR_result:
+    #         count_normal_ocr += 1
+    #     elif key in vague_OCR_result:
+    #         prob = vague_OCR_result[key][1][0]
+    #         if prob < 0.9:
+    #             count_vague_low += 1
+    #         else:
+    #             count_vague_high += 1
+
+    # print(f"初始 OCR 框: {initial_ocr_count}")
+    # print(f"初始 vague 框: {initial_vague_count}")
+    # print(f"被移除的 OCR 框: {removed_ocr_count}")
+    # print(f"最终总框数: {final_count}")
+    # print(f"→ 普通 OCR 框: {count_normal_ocr}")
+    # print(f"→ vague 高置信（当普通）: {count_vague_high}")
+    # print(f"→ degraded 低置信（待补全）: {count_vague_low}")
+    ############################
+
     chars_list = []
     num_ocr = 0
     num_degraded = 0
     degraded_dict = {}
     extra_num_ocr_prob_dict = {}
+    ############################
+    # 统计三类框result
+    normal_ocr_result = {}        # 只走普通 OCR 识别的
+    vague_high_result = {}         # vague 里高置信度当作普通字符的
+    vague_low_result = {}          # degraded（低置信度）要补全的
+    ############################
     for box in out_box_li:
         if str(box) in OCR_result.keys():
+            #第一类：普通 OCR 框
             num_ocr += 1
             chars_list.append(OCR_result[str(box)][0][0])
+            normal_ocr_result[str(box)] = OCR_result[str(box)] ##################################
         elif str(box) in vague_OCR_result.keys():
             prob = vague_OCR_result[str(box)][1][0]
             if prob < 0.9:
-                
+                #第三类：degraded 低置信（待补全）
                 chars_list.append(f'<|extra_{num_degraded}|>')
                 degraded_dict[f'<|extra_{num_degraded}|>'] = [box]
                 box_xywh = xyxy2xywh(box)
@@ -265,7 +284,9 @@ def main(data, opt):
                                                                         'flag': False,
                                                                     }
                 num_degraded += 1
+                vague_low_result[str(box)] = vague_OCR_result[str(box)] ##################################
             else:
+                #第二类：vague 高置信（当普通）
                 num_ocr += 1
                 chars_list.append(vague_OCR_result[str(box)][0][0])
                 box_xywh = xyxy2xywh(box)
@@ -276,24 +297,21 @@ def main(data, opt):
                                                                         'txt': vague_OCR_result[str(box)][0][0],
                                                                         'flag': False,
                                                                     }
+                vague_high_result[str(box)] = vague_OCR_result[str(box)] ##################################
         else:
             print('出现了未知的框')
             import pdb; pdb.set_trace()
     
-    if num_degraded > 270:
-        return None, None
-        raise ValueError('Too many degraded characters')
+    # 调试暂时注释
+    # if num_degraded > 270:
+    #     return None, None
+    #     raise ValueError('Too many degraded characters')
 
 
     print(f'识别字符：【{num_ocr}】个，识别破损位置：【{num_degraded}】个')
     char_str = ''.join(chars_list)
-    
-    yield f'识别字符：【{num_ocr}】个，识别破损位置：【{num_degraded}】个', None
-    yield 'OCR识别结果...', None
- 
     char_str = convert(char_str, 'zh-cn')
     char_str = cc.convert(char_str)
-    yield char_str, None
 
     del model_det_vague
     del det_model
@@ -301,8 +319,27 @@ def main(data, opt):
 
     torch.cuda.empty_cache()
 
+    ############################
+    print(f"第一类结果数量: {len(normal_ocr_result)}")
+    print(f"第二类结果数量: {len(vague_high_result)}")
+    print(f"第三类结果数量: {len(vague_low_result )}")
+    # import pdb;pdb.set_trace()
+    print('第一阶段结束')
+    connect_normal_ocr_result['result'] = normal_ocr_result
+    connect_vague_high_result['result'] = vague_high_result
+    connect_vague_low_result['result'] = vague_low_result
+
+
+
+    # import pdb;pdb.set_trace()
+    return char_str, extra_num_ocr_prob_dict
+    ############################
+
+
+######################################################################################################################################
+def predict(device, opt, char_str, extra_num_ocr_prob_dict):
+
     print('predicting...')
-    yield "预测缺失文本...", None
     model_name_or_path = opt.model_name_or_path
     model, tokenizer = model_init(model_name_or_path)
 
@@ -422,15 +459,20 @@ def main(data, opt):
                     extra_num_ocr_prob_dict[key]['flag'] = False
                     # print(f"出现多token 解码失败的情况")
                     # import pdb; pdb.set_trace()
-
-    yield '缺失内容预测结果...', None
-    yield str(output_matches), None
-
-    print('开始加载修复模型')
-    yield "加载修复模型...", None
+    # _ = extra_num_ocr_prob_dict
+    # extra_num_ocr_prob_dict = _
     del model
     del tokenizer
     torch.cuda.empty_cache()
+    # import pdb;pdb.set_trace()
+    return extra_num_ocr_prob_dict
+
+
+######################################################################################################################################
+
+def restore(device, opt, img_invert_path, extra_num_ocr_prob_dict):
+    print('开始加载修复模型')
+    img_invert= Image.open(img_invert_path)
 
     ############### 加载修复模型 ###################
     unet = UNet2DModel.from_pretrained(pretrained_model_name_or_path='ckpt/unet')
@@ -441,7 +483,6 @@ def main(data, opt):
     generator = torch.Generator(device=pipeline.device).manual_seed(opt.seed)
 
     print('开始切patches')
-    yield "根据破损字符位置对图像切块...", None
 
     patch_size = 448
     stride = 224
@@ -580,14 +621,12 @@ def main(data, opt):
                     patches.append((patch, patch_info))
     # print(f'img{i} success, patch num: {len(patches)}')
     print(f'共有{len(patches)}个patch')
-    yield f'共有{len(patches)}个patch', None
-    # import pdb; pdb.set_trace()
+
 
     print_i = 0
     for patch in tqdm(patches):
         
         print_i += 1
-        yield f"正在修复第{print_i}个patch...", None
         # 图像块的左上角和右下角坐标
         xmin, ymin, xmax, ymax = patch[1]['position']
         # degraded_image = patch[0]
@@ -704,18 +743,13 @@ def main(data, opt):
             if count < area_threshold:
                 final_mask[labeled_holes == label_idx] = 255
     
-        # # 转换回PIL Image
-        # cv2.imwrite('a.png', connected_mask)
-        # mask_image = Image.fromarray(final_mask)
-        # mask_image.save('a1.png')
-        # import pdb; pdb.set_trace()
+
         degraded_array = np.array(degraded_image)
         mask_array = np.array(final_mask)
         mask_3channel = np.stack([mask_array] * 3, axis=2)
         result_array = np.where(mask_3channel == 255, 255, degraded_array)
         degraded_image = Image.fromarray(result_array)
-        # cv2.imwrite('a.jpg', final_mask)
-        # import pdb; pdb.set_trace()
+
     
 
         repair_image_dict['content_image'] = content_image
@@ -756,78 +790,24 @@ def main(data, opt):
 
         image = image.resize((patch_size, patch_size), Image.Resampling.LANCZOS)
         img_invert.paste(image, patch[1]['position'])
-        # if print_i % 5 == 0:
-        #     img_invert.save('patched_image_repaired_1.png')
-        # import pdb; pdb.set_trace()
-    restore_img = restore_image(img_invert)
-    combined = concatenate_images_vertical(restore_img, img)
-    print(data)
-    # restore_img.save('restored_image.png')
-    # combined.save('combined_image_1.png')
 
-    if restore_img is not None:
-        restore_img.save(os.path.join(f'{save_path}/img', 'tmp.jpg'))
-        combined.save(os.path.join(f'{save_path}/combined', 'tmp.jpg'))
+    restore_img = restore_image(img_invert)
 
     del pipeline
     del unet
     del generator
     torch.cuda.empty_cache()
-    # import pdb; pdb.set_trace()
-    yield "修复完成",restore_img
 
-# ###标识
+    return restore_img
 
-#     yield "正在标识结果...", None
-#     image_to_repair_mark = restore_img.copy()
-#     draw = ImageDraw.Draw(image_to_repair_mark)
 
-#     try:
-#         font = ImageFont.truetype("demo_utils/font/KaiXinSongA.ttf", 20)  # 这里使用系统字体"宋体"
-#     except IOError:
-#         font = ImageFont.load_default() 
-
-#     colors = ['blue', 'green', 'purple', 'orange', 'brown', 'cyan', 'magenta', 'yellow', 'pink', 'gray']
-
-#     for idx,patch in tqdm(enumerate(patches)): 
-#         #图像块坐标
-#         xmin, ymin, xmax, ymax = patch[1]['position']
-#         color = colors[idx % len(colors)]
-#         # 绘制边框
-#         draw.rectangle([xmin, ymin, xmax, ymax], outline=color, width=2)
-#         label = f"Patch {idx+1} ({patch_size}x{patch_size})"
-#         draw.text((xmin, ymin), label, fill=color, font=font)
-#         #处理修复字符
-#         for bbox_name in patch[1]['intersect_bboxes']:
-#             bbox_info = extra_num_ocr_prob_dict[bbox_name]
-#             bx_min, by_min, bw, bh = bbox_info['bbox']
-#             bx_max = bx_min + bw; by_max = by_min + bh
-            
-#             # # 确保坐标在patch范围内
-#             # rel_x_min = max(0, int(bx_min - xmin))
-#             # rel_y_min = max(0, int(by_min - ymin))
-#             # rel_x_max = min(patch_size, int(bx_max - xmin))
-#             # rel_y_max = min(patch_size, int(by_max - ymin))
-            
-#             # 只有当有效区域大于0时才绘制
-#             if rel_x_max > rel_x_min and rel_y_max > rel_y_min:
-#                 combined_mask[rel_y_min:rel_y_max, rel_x_min:rel_x_max] = 255      
-#                 #绘制字框
-#                 draw.rectangle([bx_min, by_min, bx_max, by_max], outline=colors[(idx+1) % len(colors)], width=2)
-#                 #绘制字
-#                 text = bbox_info['txt']
-#                 draw.text((bx_min, by_min), text, fill='red', font=font)
-#     yield "标识完成",None
-#     yield "标识完成",image_to_repair_mark
-    
-# ###
-    return "修复完成",restore_img
-
+######################################################################################################################################
+# 下面是使用示例
 if __name__ == '__main__':
 
     config_file = './ckpt/damage_detect.py' # 网络模型py文件
     damage_detect_checkpoint_file = './ckpt/damage_detect.pth'  # 训练好的模型参数
-    model_name_or_path = './ckpt/AutoHDR-Qwen2-7B'
+    model_name_or_path = './ckpt/AutoHDR-Qwen2-1.5B'
     ocr_det_weights = './ckpt/best.pt'
 
     parser = argparse.ArgumentParser(prog='test.py')
@@ -894,7 +874,26 @@ if __name__ == '__main__':
     if not os.path.exists(combined_dir):
         os.makedirs(combined_dir)
 
-    restore_img, combined = main(data=img_path, opt=opt)
+
+    #device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu") 
+    #opt
+    opt.data = img_path
+    #img,img_invert,img_invert_path配置
+    img = Image.open(img_path).convert('RGB')
+    img_invert = invert_image(img)
+    img_invert_path = 'tmp_img/api_tmp.jpg'
+    img_invert.save(img_invert_path)
+    #识别localize
+    char_str1, extra_num_ocr_prob_dict1 = localize(device, opt, img_invert_path)
+    #预测predict
+    extra_num_ocr_prob_dict2 = predict(device, opt, char_str1, extra_num_ocr_prob_dict1)
+    #临时检测
+    print(f"extra_num_ocr_prob_dict相等情况：{extra_num_ocr_prob_dict1 == extra_num_ocr_prob_dict2}")
+    #修复restore
+    restore_img = restore(device, opt, img_invert_path, extra_num_ocr_prob_dict1)
+    #保存结果
+    combined = concatenate_images_vertical(restore_img, img)
     if restore_img is not None:
         restore_img.save(os.path.join(f'{save_path}/img', img_path))
         combined.save(os.path.join(f'{save_path}/combined', img_path))

@@ -6,11 +6,11 @@ from demo_flask_utils.connect.main_connect import get_ocr_rects  # 修改导入�
 ######################################################
 from typing import List, Dict
 from demo_flask_utils.lib.rect_interface import RectInterface
-from infer_pipeline import main
+from infer_pipeline_api import main
 from demo_flask_utils.connect.shared_vars import *
 
 from PIL import Image
-import infer_pipeline as pipline_qwen_multisptk_api
+import infer_pipeline_api as pipline_qwen_multisptk_api
 import argparse
 from transformers import set_seed
 import os
