@@ -7,7 +7,7 @@ from demo_flask_utils.connect.main_connect import get_ocr_rects  # 修改导入�
 from typing import List, Dict
 from demo_flask_utils.lib.rect_interface import RectInterface
 from infer_pipeline import main
-from demo_flask_utils.connect.shared_vars import temp_rects_storage
+from demo_flask_utils.connect.shared_vars import *
 
 from PIL import Image
 import infer_pipeline as pipline_qwen_multisptk_api
@@ -147,42 +147,54 @@ def upload_file():
         #     restore_img.save(os.path.join(f'{save_path}/img', img_path))
         #     combined.save(os.path.join(f'{save_path}/combined', img_path))
 
-        OCR_result = temp_rects_storage.get('last_run_rects', [])
+        normal_ocr_result = connect_normal_ocr_result.get('result', [])
+        vague_high_result = connect_vague_high_result.get('result', [])
+        vague_low_result = connect_vague_low_result.get('result', [])
+        all_ocr_results = {
+            'normal_ocr': normal_ocr_result,
+            'vague_high': vague_high_result,
+            'vague_low': vague_low_result
+        }
 
         rects = []
         id_counter = 1
         
-        for bbox_str, (labels, confs) in OCR_result.items():
-            # 解析边界框字符串
-            bbox = eval(bbox_str)
-            x1, y1, x2, y2 = bbox
-            
-            # 计算宽度和高度
-            width = x2 - x1
-            height = y2 - y1
-            
-            # 提取第一个字符作为标签
-            first_char = labels[0] if labels else ""
-            
-            # 根据置信度确定颜色
-            confidence = confs[0] if confs else 0
-            if confidence > 0.9:
-                color = "#7fffd4"
-            else:
-                color = "#ff0000"
-            
-            # 创建矩形对象
-            rect = {
-                "x": x1,
-                "y": y1,
-                "width": width,
-                "height": height,
-                "color": color,
-                "label": first_char,
-                "id": id_counter
-            }
-            rects.append(rect)
-            id_counter += 1
+        ##############################
+        for result_type, ocr_result_dict in all_ocr_results.items():
+            if not ocr_result_dict: # 检查结果集是否为空
+                continue
+            for bbox_str, (labels, confs) in ocr_result_dict.items():
+                # 解析边界框字符串
+                bbox = eval(bbox_str)
+                x1, y1, x2, y2 = bbox
+                # 计算宽度和高度
+                width = x2 - x1
+                height = y2 - y1
+                # 提取第一个字符作为标签
+                first_char = labels[0] if labels else ""
+                # 根据置信度确定颜色
+                if result_type == 'normal_ocr':
+                    color = "#7fffd4"#绿色
+                    pass
+                elif result_type == 'vague_high':
+                    color = "#060ac9"#蓝色
+                    pass
+                elif result_type == 'vague_low':
+                    color = "#ff0000"#红色
+                    pass
+                
+                # 创建矩形对象
+                rect = {
+                    "x": x1,
+                    "y": y1,
+                    "width": width,
+                    "height": height,
+                    "color": color,
+                    "label": first_char,
+                    "id": id_counter
+                }
+                rects.append(rect)
+                id_counter += 1
 
         if rects == []:
             rects = [

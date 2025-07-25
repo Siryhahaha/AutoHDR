@@ -36,7 +36,7 @@ from scipy.ndimage import binary_dilation, binary_fill_holes
 from scipy.ndimage import label as ndimage_label
 
 ###################################
-from demo_flask_utils.connect.shared_vars import temp_rects_storage
+from demo_flask_utils.connect.shared_vars import *
 ###################################
 
 cc = OpenCC('s2t')
@@ -227,6 +227,49 @@ def main(data, opt):
     h, w = im.shape[:2]
     out_box_li = get_sort(final_results, h, w)
 
+
+    ############################
+    # import pdb;pdb.set_trace()
+
+        # 统计三类框
+    initial_ocr_count = len(ocr_det_bbox)               # OCR_result 原始框数
+    initial_vague_count = len(vague_det_bbox)           # vague_OCR_result 原始框数
+    removed_ocr_count = len(to_remove)                  # 被 IoU 合并去掉的 OCR 框数
+    # 最终参与排列的总框数
+    final_count = len(out_box_li)
+
+    # 分类计数
+    count_normal_ocr = 0        # 只走普通 OCR 识别的
+    count_vague_high = 0        # vague 里高置信度当作普通字符的
+    count_vague_low = 0         # degraded（低置信度）要补全的
+
+    for box in out_box_li:
+        key = str(box)
+        if key in OCR_result:
+            count_normal_ocr += 1
+        elif key in vague_OCR_result:
+            prob = vague_OCR_result[key][1][0]
+            if prob < 0.9:
+                count_vague_low += 1
+            else:
+                count_vague_high += 1
+
+    print(f"初始 OCR 框: {initial_ocr_count}")
+    print(f"初始 vague 框: {initial_vague_count}")
+    print(f"被移除的 OCR 框: {removed_ocr_count}")
+    print(f"最终总框数: {final_count}")
+    print(f"→ 普通 OCR 框: {count_normal_ocr}")
+    print(f"→ vague 高置信（当普通）: {count_vague_high}")
+    print(f"→ degraded 低置信（待补全）: {count_vague_low}")
+    ############################
+
+    ############################
+    # 统计三类框result
+    normal_ocr_result = {}        # 只走普通 OCR 识别的
+    vague_high_result = {}         # vague 里高置信度当作普通字符的
+    vague_low_result = {}          # degraded（低置信度）要补全的
+    ############################
+
     chars_list = []
     num_ocr = 0
     num_degraded = 0
@@ -234,12 +277,16 @@ def main(data, opt):
     extra_num_ocr_prob_dict = {}
     for box in out_box_li:
         if str(box) in OCR_result.keys():
+            #第一类：普通 OCR 框
             num_ocr += 1
             chars_list.append(OCR_result[str(box)][0][0])
+            # import pdb; pdb.set_trace()
+            normal_ocr_result[str(box)] = OCR_result[str(box)] ##################################
+            # normal_ocr_result.append(OCR_result[str(box)])
         elif str(box) in vague_OCR_result.keys():
             prob = vague_OCR_result[str(box)][1][0]
             if prob < 0.9:
-                
+                #第三类：degraded 低置信（待补全）
                 chars_list.append(f'<|extra_{num_degraded}|>')
                 degraded_dict[f'<|extra_{num_degraded}|>'] = [box]
                 box_xywh = xyxy2xywh(box)
@@ -251,7 +298,9 @@ def main(data, opt):
                                                                         'flag': False,
                                                                     }
                 num_degraded += 1
+                vague_low_result[str(box)] = vague_OCR_result[str(box)] ##################################
             else:
+                #第二类：vague 高置信（当普通）
                 num_ocr += 1
                 chars_list.append(vague_OCR_result[str(box)][0][0])
                 box_xywh = xyxy2xywh(box)
@@ -262,6 +311,7 @@ def main(data, opt):
                                                                         'txt': vague_OCR_result[str(box)][0][0],
                                                                         'flag': False,
                                                                     }
+                vague_high_result[str(box)] = vague_OCR_result[str(box)] ##################################
         else:
             print('出现了未知的框')
             import pdb; pdb.set_trace()
@@ -274,8 +324,6 @@ def main(data, opt):
 
     print(f'识别字符：【{num_ocr}】个，识别破损位置：【{num_degraded}】个')
     char_str = ''.join(chars_list)
-    
- 
     char_str = convert(char_str, 'zh-cn')
     char_str = cc.convert(char_str)
 
@@ -286,11 +334,14 @@ def main(data, opt):
     torch.cuda.empty_cache()
 
     ############################
+    print(f"第一类结果数量: {len(normal_ocr_result)}")
+    print(f"第二类结果数量: {len(vague_high_result)}")
+    print(f"第三类结果数量: {len(vague_low_result )}")
     # import pdb;pdb.set_trace()
     print('第一阶段结束')
-
-    # import pdb;pdb.set_trace()
-    temp_rects_storage['last_run_rects'] = OCR_result
+    connect_normal_ocr_result['result'] = normal_ocr_result
+    connect_vague_high_result['result'] = vague_high_result
+    connect_vague_low_result['result'] = vague_low_result
     return img, None
     ############################
 
