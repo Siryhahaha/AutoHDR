@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AutoHDR | ocr结果</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="header">
+        AutoHDR | ocr结果
+        <a href="{{ url_for('index') }}" class="header__nav-btn">返回上传</a>
+    </div>
+    <div class="main-flex">
+        <div class="sidebar">
+            <div class="sidebar-content">
+                <div class="sidebar-title">
+                    <span class="sidebar-title__icon">🗂️</span>
+                    框信息
+                </div>
+                <form id="rect-form">
+                    <div id="rect-form-list"></div>
+                </form>
+            </div>
+            <div class="sidebar-controls">
+                <div class="sidebar-controls-row">
+                    <button id="draw-btn" class="btn btn-primary" type="button">添加框</button>
+                    <select id="rect-color" title="选择框颜色">
+                        <option value="#7fffd4" selected>绿色</option>
+                        <option value="#ff0000">红色</option>
+                        <option value="#888888">灰色</option>
+                        <option value="#060ac9">蓝色</option>
+                        <option value="#097b7e">青色</option>
+                        <option value="#e4710a">橙色</option>
+                        <option value="#ffffff">白色</option>
+                    </select>
+                </div>
+                <div class="sidebar-controls-row">
+                    <button id="other-btn" class="btn btn-primary" type="button">显示标签</button>
+                    <button id="zoom-btn" class="btn btn-primary" type="button">适应页面</button>
+                </div>
+            </div>
+        </div>
+        <div class="content">
+            <div class="draw-area" id="draw-area">
+                <img id="main-image" src="{{ image_url }}" alt="图片"
+                     draggable="false"
+                     oncontextmenu="return false;"
+                     style="user-select: none; -webkit-user-drag: none; -webkit-user-select: none;">
+                <!-- 矩形框会插入到这里 -->
+            </div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='js/rect.js') }}"></script>
+    <script>
+    window.addEventListener('DOMContentLoaded', function() {
+        const drawBtn = document.getElementById('draw-btn');
+        const otherBtn = document.getElementById('other-btn');
+        const drawArea = document.getElementById('draw-area');
+        const rectFormList = document.getElementById('rect-form-list');
+        const colorInput = document.getElementById('rect-color');
+        const zoomBtn = document.getElementById('zoom-btn');
+        
+        // 创建单个RectUI实例
+        const rectUI = new RectUI(
+            drawArea,
+            rectFormList,
+            colorInput,
+            drawBtn,
+            otherBtn,
+            zoomBtn
+        );
+        
+        // 加载初始数据
+        const initialRectsStr = '{{ initial_rects | safe }}';
+        if (initialRectsStr) {
+            try {
+                const manager = RectManager.from_json(initialRectsStr);
+                rectUI.rectManager.setRects(manager.rects);
+                rectUI.rectManager.onChange();
+            } catch(e) {
+                console.error('Failed to parse initial_rects:', e);
+            }
+        }
+        window.rectUI = rectUI;
+    });
+    </script>
+</body>
+</html>

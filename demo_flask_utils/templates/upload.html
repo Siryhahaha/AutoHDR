@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AutoHDR | 首页</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="header">
+        AutoHDR-自动古籍修复
+    </div>
+    <div class="main-flex">
+        <div class="sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-selected-file empty" id="selected-file-label">未选择文件</div>
+                <form id="upload-form" action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data" style="margin:0;">
+                    <input type="file" name="file" id="file" accept="image/*" required style="margin-bottom: 0; display:none;">
+                    <input type="hidden" name="is_example" id="is_example" value="0">
+                    <input type="hidden" name="example_filename" id="example_filename" value="">
+                </form>
+            </div>
+            <div class="sidebar-section">
+                <div class="examples">
+                    <div class="examples__title">点击例子直接使用</div>
+                    <div class="examples__list" id="example-images-list">
+                        {% for img, idx in example_images %}
+                        <div class="example-item" data-img="{{ img }}" title="例{{ idx+1 }}：{{ img }}"
+                             onclick="handleExampleClick('{{ img }}')">
+                            <img src="{{ url_for('static', filename='images/' ~ img) }}" 
+                                 class="example-item__thumb" data-filename="{{ img }}">
+                            <span class="example-item__name">例{{ idx+1 }}：{{ img }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="content upload-page">
+            <div class="upload">
+                <div class="upload__drop-area" id="upload-drop-area">
+                    <label class="upload__label" id="drop-label">
+                        拖拽图片到此处，或点击选择文件
+                    </label>
+                    <input type="file" name="file" id="drop-file-input" accept="image/*" style="display:none;">
+                </div>
+                <img id="preview-img" class="upload__preview" src="" alt="图片预览" style="display:none;">
+                <div class="upload__actions" id="upload-btn-row" style="display:none;">
+                    <button type="button" class="btn btn--cancel" id="cancel-img-btn">取消图片</button>
+                    <button type="button" class="btn btn--primary" id="start-process-btn" disabled>开始处理</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+    // 选择文件后显示文件名
+    const fileInput = document.getElementById('file');
+    const dropFileInput = document.getElementById('drop-file-input');
+    const selectedFileLabel = document.getElementById('selected-file-label');
+    const previewImg = document.getElementById('preview-img');
+    const uploadForm = document.getElementById('upload-form');
+    const uploadDropArea = document.getElementById('upload-drop-area');
+    const dropLabel = document.getElementById('drop-label');
+    const startBtn = document.getElementById('start-process-btn');
+    const uploadBtnRow = document.getElementById('upload-btn-row');
+    const cancelImgBtn = document.getElementById('cancel-img-btn');
+    const isExampleInput = document.getElementById('is_example');
+    const exampleFilenameInput = document.getElementById('example_filename');
+    let currentFile = null;
+
+    function setSelectedFileLabel(name) {
+        if (name) {
+            selectedFileLabel.textContent = name;
+            selectedFileLabel.classList.remove('empty');
+        } else {
+            selectedFileLabel.textContent = '未选择文件';
+            selectedFileLabel.classList.add('empty');
+        }
+    }
+
+    // 修改：预览图片时的位置和大小控制
+    function showPreview(file) {
+        if (!file) {
+            previewImg.src = '';
+            previewImg.style.display = 'none';
+            startBtn.disabled = true;
+            uploadBtnRow.style.display = 'none';
+            uploadDropArea.style.display = '';
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            previewImg.src = e.target.result;
+            previewImg.style.display = 'block';
+            previewImg.style.maxHeight = '60vh';  // 限制最大高度
+            previewImg.style.margin = '20px auto';  // 上下margin
+            startBtn.disabled = false;
+            uploadBtnRow.style.display = 'flex';
+            uploadDropArea.style.display = 'none';
+        };
+        reader.readAsDataURL(file);
+    }
+
+    // 选择文件按钮
+    fileInput.onchange = function() {
+        if (fileInput.files && fileInput.files[0]) {
+            currentFile = fileInput.files[0];
+            setSelectedFileLabel(currentFile.name);
+            showPreview(currentFile);
+            // 同步到右侧隐藏input
+            dropFileInput.files = fileInput.files;
+            // 普通上传
+            isExampleInput.value = "0";
+            exampleFilenameInput.value = "";
+        } else {
+            currentFile = null;
+            setSelectedFileLabel('');
+            showPreview(null);
+            isExampleInput.value = "0";
+            exampleFilenameInput.value = "";
+        }
+    };
+
+    // 右侧拖拽上传
+    uploadDropArea.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        uploadDropArea.classList.add('dragover');
+    });
+    uploadDropArea.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        uploadDropArea.classList.remove('dragover');
+    });
+    uploadDropArea.addEventListener('drop', function(e) {
+        e.preventDefault();
+        uploadDropArea.classList.remove('dragover');
+        let files = e.dataTransfer.files;
+        if (files && files.length > 0) {
+            currentFile = files[0];
+            setSelectedFileLabel(currentFile.name);
+            showPreview(currentFile);
+            // 同步到左侧input
+            fileInput.files = files;
+            dropFileInput.files = files;
+            // 普通上传
+            isExampleInput.value = "0";
+            exampleFilenameInput.value = "";
+        }
+        // 检查是否拖的是例子图片
+        let url = e.dataTransfer.getData('text/plain');
+        if (url && url.startsWith(window.location.origin)) {
+            fetch(url)
+                .then(resp => resp.blob())
+                .then(blob => {
+                    let filename = url.split('/').pop();
+                    let file = new File([blob], filename, {type: blob.type});
+                    let dt = new DataTransfer();
+                    dt.items.add(file);
+                    fileInput.files = dt.files;
+                    dropFileInput.files = dt.files;
+                    currentFile = file;
+                    setSelectedFileLabel(filename);
+                    showPreview(file);
+                    // 标记为例子图片
+                    isExampleInput.value = "1";
+                    exampleFilenameInput.value = filename;
+                });
+        }
+    });
+
+    // 右侧点击选择文件
+    uploadDropArea.onclick = function(e) {
+        // 避免点击取消/开始处理按钮时触发
+        if (e.target === uploadDropArea || e.target === dropLabel) {
+            dropFileInput.click();
+        }
+    };
+    // 保持原有label点击
+    dropLabel.onclick = function(e) {
+        dropFileInput.click();
+        e.stopPropagation();
+    };
+    dropFileInput.onchange = function() {
+        if (dropFileInput.files && dropFileInput.files[0]) {
+            currentFile = dropFileInput.files[0];
+            setSelectedFileLabel(currentFile.name);
+            showPreview(currentFile);
+            // 同步到左侧input
+            fileInput.files = dropFileInput.files;
+            // 普通上传
+            isExampleInput.value = "0";
+            exampleFilenameInput.value = "";
+        }
+    };
+
+    // 例子图片整行可拖动
+    document.querySelectorAll('.example-row').forEach(row => {
+        row.addEventListener('dragstart', function(e) {
+            const img = row.querySelector('.example-thumb');
+            e.dataTransfer.setData('text/plain', img.src);
+            e.dataTransfer.effectAllowed = 'copy';
+        });
+        // 支持点击整行后立即拖动
+        row.addEventListener('mousedown', function(e) {
+            if (e.button !== 0) return;
+            // 模拟拖拽
+            const img = row.querySelector('.example-thumb');
+            let dragImg = document.createElement('img');
+            dragImg.src = img.src;
+            dragImg.style.position = 'absolute';
+            dragImg.style.left = '-9999px';
+            document.body.appendChild(dragImg);
+            row.addEventListener('dragend', function cleanup() {
+                document.body.removeChild(dragImg);
+                row.removeEventListener('dragend', cleanup);
+            });
+            row.draggable = true;
+        });
+    });
+
+    // 移除图片自身的拖拽事件（只保留整行）
+    document.querySelectorAll('.example-thumb').forEach(img => {
+        img.draggable = false;
+    });
+
+    // 例子图片拖拽到右侧
+    uploadDropArea.addEventListener('drop', function(e) {
+        // 检查是否拖的是例子图片
+        let url = e.dataTransfer.getData('text/plain');
+        if (url && url.startsWith(window.location.origin)) {
+            fetch(url)
+                .then(resp => resp.blob())
+                .then(blob => {
+                    let filename = url.split('/').pop();
+                    let file = new File([blob], filename, {type: blob.type});
+                    let dt = new DataTransfer();
+                    dt.items.add(file);
+                    fileInput.files = dt.files;
+                    dropFileInput.files = dt.files;
+                    currentFile = file;
+                    setSelectedFileLabel(filename);
+                    showPreview(file);
+                    // 标记为例子图片
+                    isExampleInput.value = "1";
+                    exampleFilenameInput.value = filename;
+                });
+        }
+    });
+
+    // 新增：处理点击例子图片
+    function handleExampleClick(filename) {
+        fetch(window.location.origin + '/static/images/' + filename)
+            .then(resp => resp.blob())
+            .then(blob => {
+                let file = new File([blob], filename, {type: blob.type});
+                let dt = new DataTransfer();
+                dt.items.add(file);
+                fileInput.files = dt.files;
+                dropFileInput.files = dt.files;
+                currentFile = file;
+                setSelectedFileLabel(filename);
+                showPreview(file);
+                // 标记为例子图片
+                isExampleInput.value = "1";
+                exampleFilenameInput.value = filename;
+            });
+    }
+
+    // “开始处理”按钮提交表单
+    startBtn.onclick = function() {
+        if (!currentFile) return;
+        // 用左侧form提交
+        uploadForm.submit();
+    };
+
+    // 取消图片按钮
+    cancelImgBtn.onclick = function() {
+        currentFile = null;
+        fileInput.value = '';
+        dropFileInput.value = '';
+        setSelectedFileLabel('');
+        showPreview(null);
+        isExampleInput.value = "0";
+        exampleFilenameInput.value = "";
+    };
+
+    // 初始化
+    setSelectedFileLabel('');
+    showPreview(null);
+    </script>
+</body>
+</html>

@@ -35,6 +35,10 @@ from utils_pipeline import calculate_iou, xyxy2xywh, rank_probability_weighted_f
 from scipy.ndimage import binary_dilation, binary_fill_holes
 from scipy.ndimage import label as ndimage_label
 
+###################################
+from demo_flask_utils.connect.shared_vars import temp_rects_storage
+###################################
+
 cc = OpenCC('s2t')
 ss = OpenCC('t2s')
 
@@ -262,9 +266,10 @@ def main(data, opt):
             print('出现了未知的框')
             import pdb; pdb.set_trace()
     
-    if num_degraded > 270:
-        return None, None
-        raise ValueError('Too many degraded characters')
+    # 调试暂时注释
+    # if num_degraded > 270:
+    #     return None, None
+    #     raise ValueError('Too many degraded characters')
 
 
     print(f'识别字符：【{num_ocr}】个，识别破损位置：【{num_degraded}】个')
@@ -279,6 +284,16 @@ def main(data, opt):
     del reg_model
 
     torch.cuda.empty_cache()
+
+    ############################
+    # import pdb;pdb.set_trace()
+    print('第一阶段结束')
+
+    # import pdb;pdb.set_trace()
+    temp_rects_storage['last_run_rects'] = OCR_result
+    return img, None
+    ############################
+
 
     print('predicting...')
     model_name_or_path = opt.model_name_or_path

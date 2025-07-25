@@ -1,0 +1,464 @@
+/* 基础布局与全局样式 */
+body { margin: 0; padding: 0; }
+.header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 52px;
+    background: #1976d2;
+    color: #fff;
+    font-size: 22px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    padding-left: 32px;
+    z-index: 100;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+}
+.header__nav-btn {
+    position: absolute;
+    right: 32px;
+    top: 10px;
+    background: #fff;
+    color: #1976d2;
+    border: 1.5px solid #1976d2;
+    border-radius: 5px;
+    font-size: 15px;
+    font-weight: bold;
+    padding: 6px 18px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+.header__nav-btn:hover {
+    background: #1976d2;
+    color: #fff;
+}
+.main-flex {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    width: 100%;
+}
+.sidebar {
+    min-width: 260px;
+    max-width: 320px;
+    width: 280px;
+    padding: 18px 10px 10px 10px;
+    border-right: 1px solid #eee;
+    background: #fafbfc;
+    position: fixed;
+    left: 0;
+    top: 52px;
+    height: calc(100vh - 52px);
+    overflow-y: auto;
+    z-index: 10;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+}
+.sidebar-content {
+    flex: 1 1 auto;
+    overflow-y: auto;
+}
+.sidebar-controls {
+    flex-shrink: 0;
+    padding-top: 16px;
+    padding-bottom: 10px;
+    background: #fafbfc;
+    border-top: 1px solid #e0e0e0;
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+}
+.sidebar-controls-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+}
+.sidebar-controls-row > * {
+    margin-bottom: 4px;
+}
+.sidebar-controls-row button,
+.sidebar-controls-row select {
+    min-width: 90px;
+}
+.sidebar-controls .btn,
+.sidebar-controls select {
+    margin: 0 8px 4px 0;
+}
+.content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    margin-left: 280px;
+    margin-top: 52px;
+    height: calc(100vh - 52px);
+    overflow: auto;
+    box-sizing: border-box;
+}
+.image-box {
+    margin-top: 30px;
+    margin-bottom: 10px;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+}
+.image-box img,
+#main-image,
+#preview-img {
+    display: block;
+    max-width: 90%;
+    width: 100%;
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    user-select: none;
+}
+#main-image,
+#preview-img {
+    max-width: 800px;
+}
+.draw-area {
+    position: relative;
+    display: block;
+    /* 不限制宽高，随图片自适应 */
+    margin-top: 40px;
+}
+.log-area {
+    width: 100%;
+    background: #222;
+    color: #eee;
+    padding: 15px;
+    border-radius: 5px;
+    font-family: monospace;
+    margin-top: 10px;
+    min-height: 80px;
+    max-height: 30vh;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+.form-group {
+    margin-bottom: 18px;
+    padding: 10px;  /* 添加内边距 */
+    border-radius: 5px;  /* 添加圆角 */
+    border: 2px solid transparent;  /* 添加透明边框 */
+    transition: background 0.2s, border-color 0.2s;  /* 添加过渡效果 */
+}
+.form-group.active {
+    border-color: #1976d2;
+    background: #e3f2fd;
+}
+label {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 15px;
+    font-weight: bold;
+}
+input[type="text"], textarea {
+    width: 100%;
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    font-size: 13px;
+    box-sizing: border-box;
+    margin-top: 4px;
+    margin-bottom: 2px;
+}
+input[type="file"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 12px;
+    font-size: 15px;
+    border-radius: 5px;
+    border: 1px solid #1976d2;
+    background: #fff;
+    color: #222;
+    margin-bottom: 8px;
+    outline: none;
+}
+input[type="file"]:focus {
+    border: 2px solid #1251a3;
+}
+.btn, button, input[type="button"], input[type="submit"] {
+    display: inline-block;
+    padding: 8px 20px;
+    font-size: 16px;
+    border-radius: 5px;
+    border: none;
+    background: #1976d2;
+    color: #fff;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.btn.btn-primary, button.btn-primary, input[type="submit"].btn-primary {
+    background: #1976d2;
+}
+.btn:hover, button:hover, input[type="button"]:hover, input[type="submit"]:hover {
+    background: #1251a3;
+}
+.btn--cancel {
+    width: 120px;
+    max-width: 120px;
+    font-size: 16px;
+    padding: 12px 0;
+    border-radius: 8px;
+    background: #e53935;
+    color: #fff;
+    margin-right: 8px;
+    border: none;
+    box-shadow: 0 2px 8px rgba(229,57,53,0.07);
+    transition: background 0.2s;
+}
+.btn--cancel:hover {
+    background: #b71c1c;
+}
+select, .rect-color-select {
+    padding: 7px 12px;
+    font-size: 15px;
+    border-radius: 5px;
+    border: 1px solid #1976d2;
+    background: #fff;
+    color: #222;
+    margin-bottom: 4px;
+    margin-right: 8px;
+    outline: none;
+    transition: border 0.2s;
+}
+select:focus, .rect-color-select:focus {
+    border: 2px solid #1251a3;
+}
+.rect-box {
+    position: absolute;
+    border: 2px solid;
+    box-sizing: border-box;
+    background: rgba(255,0,0,0.2);
+    transition: box-shadow 0.2s;  /* 添加过渡效果 */
+}
+.rect-label-outer {
+    position: absolute;
+    left: 0;
+    top: -22px;
+    font-size: 13px;
+    color: #222;
+    background: #7fffd4;
+    border-radius: 2px;
+    padding: 0 5px;
+    z-index: 3;
+    opacity: 0.92;
+    font-weight: bold;
+    pointer-events: none;
+}
+.sidebar .form-group.active {
+    border: 2px solid #1976d2;
+    background: #e3f2fd;
+    border-radius: 5px;
+}
+.rect-box.selected {
+    box-shadow: 0 0 0 3px #1976d2;
+    z-index: 10;
+}
+.form-group button, .form-group input[type="button"] {
+    padding: 6px 14px;
+    font-size: 14px;
+    border-radius: 4px;
+    border: none;
+    background: #e53935;
+    color: #fff;
+    cursor: pointer;
+    margin-left: 8px;
+    transition: background 0.2s;
+}
+.form-group button:hover, .form-group input[type="button"]:hover {
+    background: #b71c1c;
+}
+.sidebar .param {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 2px;
+}
+
+/* upload.html 美学相关样式 */
+.examples {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+.examples__title {
+    font-size: 15px;
+    font-weight: bold;
+    margin-bottom: 6px;
+    color: #1976d2;
+}
+.examples__list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.example-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 60px;
+    padding: 4px 0;
+    cursor: pointer;  /* 改为点击样式 */
+    user-select: none;
+    border-radius: 5px;
+    transition: background 0.15s;
+}
+.example-item:hover {
+    background: #e3f2fd;
+}
+.example-item__thumb {
+    width: 60px;
+    height: 100%;
+    object-fit: contain;
+    border-radius: 5px;
+    border: 2px solid #eee;
+    background: #fafbfc;
+    transition: border 0.2s;
+    flex-shrink: 0;
+    pointer-events: none;
+}
+.example-item__name {
+    font-size: 15px;
+    color: #1976d2;
+    font-weight: bold;
+    flex: 1 1 auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.sidebar-selected-file {
+    font-size: 16px;
+    color: #1976d2;
+    margin-bottom: 0;
+    padding: 10px 0 8px 10px;
+    font-weight: bold;
+    word-break: break-all;
+    border-radius: 5px;
+    background: #e3f2fd;
+    text-align: left;
+    border: 1.5px solid #1976d2;
+    letter-spacing: 0.5px;
+    box-shadow: none;
+    transition: background 0.2s, border 0.2s;
+}
+.sidebar-selected-file.empty {
+    color: #888;
+    background: #f5fafd;
+    border: 1.5px solid #e0e0e0;
+    font-weight: normal;
+    opacity: 1;
+}
+.upload {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+.upload__drop-area {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 70vw;
+    max-width: 800px;
+    min-width: 320px;
+    min-height: 260px;
+    border: 2px dashed #1976d2;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f5fafd;
+    transition: background 0.2s, border 0.2s;
+    z-index: 1;
+    flex-direction: column;
+    box-shadow: 0 2px 12px rgba(25,118,210,0.06);
+    padding: 40px 24px 32px 24px;
+    cursor: pointer;
+}
+.upload__drop-area--dragover {
+    background: #e3f2fd;
+    border-color: #1251a3;
+}
+.upload__preview {
+    display: block;
+    max-width: 90%;
+    max-height: 60vh;  /* 限制最大高度 */
+    margin: 20px auto;  /* 调整边距 */
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    object-fit: contain;
+    background: #fff;
+}
+.upload__actions {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 18px;
+    padding: 20px 0;
+    background: linear-gradient(to top, #fafbfc 90%, rgba(250,251,252,0.01));
+    z-index: 2;
+}
+.content.upload-page {
+    position: relative;
+    padding-bottom: 70px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 480px;
+}
+.sidebar-section {
+    margin-bottom: 22px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #e0e0e0;
+}
+.sidebar-title {
+    display: flex;
+    align-items: center;
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 12px;
+    gap: 8px;
+    color: #1976d2;
+    border-bottom: 1.5px solid #e3e3e3;
+    padding-bottom: 4px;
+}
+.sidebar-title__icon {
+    font-size: 20px;
+    color: #1976d2;
+}
+.btn--primary {
+    min-width: 160px;  /* 增加最小宽度 */
+    font-size: 18px;  /* 增大字号 */
+    padding: 14px 32px;  /* 增加内边距 */
+    border-radius: 8px;
+    background: #1976d2;
+    color: #fff;
+    border: none;
+    box-shadow: 0 2px 8px rgba(25,118,210,0.15);
+    transition: background 0.2s;
+}
+.btn--primary:hover {
+    background: #1251a3;
+}
+.btn--cancel {
+    min-width: 140px;  /* 修改最小宽度 */
+    font-size: 16px;
+    padding: 12px 24px;
+    border-radius: 8px;
+    background: #e53935;
+    color: #fff;
+    margin-right: 8px;
+    border: none;
+    box-shadow: 0 2px 8px rgba(229,57,53,0.07);
+    transition: background 0.2s;
+}
