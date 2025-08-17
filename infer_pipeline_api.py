@@ -216,42 +216,6 @@ def localize(device, opt, img_invert_path):
     h, w = im.shape[:2]
     out_box_li = get_sort(final_results, h, w)
 
-
-    ############################
-    # import pdb;pdb.set_trace()
-
-    #     # 统计三类框
-    # initial_ocr_count = len(ocr_det_bbox)               # OCR_result 原始框数
-    # initial_vague_count = len(vague_det_bbox)           # vague_OCR_result 原始框数
-    # removed_ocr_count = len(to_remove)                  # 被 IoU 合并去掉的 OCR 框数
-    # # 最终参与排列的总框数
-    # final_count = len(out_box_li)
-
-    # # 分类计数
-    # count_normal_ocr = 0        # 只走普通 OCR 识别的
-    # count_vague_high = 0        # vague 里高置信度当作普通字符的
-    # count_vague_low = 0         # degraded（低置信度）要补全的
-
-    # for box in out_box_li:
-    #     key = str(box)
-    #     if key in OCR_result:
-    #         count_normal_ocr += 1
-    #     elif key in vague_OCR_result:
-    #         prob = vague_OCR_result[key][1][0]
-    #         if prob < 0.9:
-    #             count_vague_low += 1
-    #         else:
-    #             count_vague_high += 1
-
-    # print(f"初始 OCR 框: {initial_ocr_count}")
-    # print(f"初始 vague 框: {initial_vague_count}")
-    # print(f"被移除的 OCR 框: {removed_ocr_count}")
-    # print(f"最终总框数: {final_count}")
-    # print(f"→ 普通 OCR 框: {count_normal_ocr}")
-    # print(f"→ vague 高置信（当普通）: {count_vague_high}")
-    # print(f"→ degraded 低置信（待补全）: {count_vague_low}")
-    ############################
-
     chars_list = []
     num_ocr = 0
     num_degraded = 0

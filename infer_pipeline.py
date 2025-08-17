@@ -472,6 +472,8 @@ def main(data, opt):
 
     del model
     del tokenizer
+    import pdb;pdb.set_trace()
+    print('第二阶段结束')
     torch.cuda.empty_cache()
 
     

@@ -1,20 +1,19 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AutoHDR | ocr结果</title>
+    <title>AutoHDR | 预测结果</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div class="header">
-        AutoHDR | ocr结果
+        AutoHDR | 预测结果
         <a href="{{ url_for('index') }}" class="header__nav-btn">返回上传</a>
     </div>
     <div class="main-flex">
         <div class="sidebar">
             <div class="sidebar-content">
                 <div class="sidebar-title">
-                    <span class="sidebar-title__icon">🗂️</span>
-                    框信息
+                    预测框信息
                 </div>
                 <form id="rect-form">
                     <div id="rect-form-list"></div>
@@ -37,6 +36,12 @@
                     <button id="other-btn" class="btn btn-primary" type="button">显示标签</button>
                     <button id="zoom-btn" class="btn btn-primary" type="button">适应页面</button>
                 </div>
+                <!-- 下一步按钮：进入修复阶段 -->
+                <div class="sidebar-controls-row">
+                    <button id="next-step-btn" class="btn btn--next-step" type="button">
+                        下一步：开始修复
+                    </button>
+                </div>
             </div>
         </div>
         <div class="content">
@@ -49,6 +54,7 @@
             </div>
         </div>
     </div>
+    <script src="{{ url_for('static', filename='js/loading.js') }}"></script>
     <script src="{{ url_for('static', filename='js/rect.js') }}"></script>
     <script>
     window.addEventListener('DOMContentLoaded', function() {
@@ -59,7 +65,7 @@
         const colorInput = document.getElementById('rect-color');
         const zoomBtn = document.getElementById('zoom-btn');
         
-        // 创建单个RectUI实例
+        // 创建RectUI实例
         const rectUI = new RectUI(
             drawArea,
             rectFormList,
@@ -69,7 +75,7 @@
             zoomBtn
         );
         
-        // 加载初始数据
+        // 加载预测结果的框数据
         const initialRectsStr = '{{ initial_rects | safe }}';
         if (initialRectsStr) {
             try {
@@ -77,10 +83,53 @@
                 rectUI.rectManager.setRects(manager.rects);
                 rectUI.rectManager.onChange();
             } catch(e) {
-                console.error('Failed to parse initial_rects:', e);
+                console.error('Failed to parse predict rects:', e);
             }
         }
         window.rectUI = rectUI;
+        
+        // 下一步按钮：进入修复阶段
+        const nextStepBtn = document.getElementById('next-step-btn');
+        nextStepBtn.onclick = function() {
+            const restoreStages = [
+                '准备进入修复阶段...',
+                '正在加载修复模型...',
+                '正在分析损坏区域...',
+                '正在生成修复补丁...',
+                '正在应用修复效果...',
+                '正在后处理图像...'
+            ];
+            loadingModal.showWithProgress('正在修复', restoreStages);
+            
+            const rectsData = rectUI.rectManager.to_json();
+            const extraDictData = '{{ extra_dict_json | safe }}';
+            
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/restore';
+            form.style.display = 'none';
+            
+            const originalInput = document.createElement('input');
+            originalInput.type = 'hidden';
+            originalInput.name = 'original_filename';
+            originalInput.value = '{{ original }}';
+            form.appendChild(originalInput);
+            
+            const rectsInput = document.createElement('input');
+            rectsInput.type = 'hidden';
+            rectsInput.name = 'rects_data';
+            rectsInput.value = rectsData;
+            form.appendChild(rectsInput);
+            
+            const extraDictInput = document.createElement('input');
+            extraDictInput.type = 'hidden';
+            extraDictInput.name = 'extra_dict_data';
+            extraDictInput.value = extraDictData;
+            form.appendChild(extraDictInput);
+            
+            document.body.appendChild(form);
+            form.submit();
+        };
     });
     </script>
 </body>

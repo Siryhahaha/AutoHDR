@@ -5,15 +5,23 @@ const CHINESE_NUMS = [
 ];
 
 class Rect {
-    constructor(x, y, width, height, color, id = null, label = null) {
+    constructor(x, y, width, height, color, id = null, label = null, alternatives = null, selectedIndex = 0) {
         this.x = x;
         this.y = y;
         this.width = width;
         this.height = height;
         this.color = color;
         this.id = id;
-        this.label = label;
+        this.label = label || "";
+        this.alternatives = alternatives || [label || ""];
+        this.selectedIndex = selectedIndex || 0;
+        
+        // 确保有5个备选项
+        while (this.alternatives.length < 5) {
+            this.alternatives.push(`选项${this.alternatives.length + 1}`);
+        }
     }
+    
     toJSON() {
         return {
             x: this.x,
@@ -22,11 +30,14 @@ class Rect {
             height: this.height,
             color: this.color,
             id: this.id,
-            label: this.label
+            label: this.label,
+            alternatives: this.alternatives,
+            selectedIndex: this.selectedIndex
         };
     }
+    
     static fromJSON(obj) {
-        return new Rect(obj.x, obj.y, obj.width, obj.height, obj.color, obj.id, obj.label);
+        return new Rect(obj.x, obj.y, obj.width, obj.height, obj.color, obj.id, obj.label, obj.alternatives, obj.selectedIndex);
     }
 }
 
@@ -40,7 +51,6 @@ class RectManager {
     }
 
     add(rect) {
-        // 统一的添加方法
         rect.id = rect.id || this.rectId++;
         if (!rect.label) {
             rect.label = CHINESE_NUMS[rect.id-1] || String(rect.id);
@@ -51,7 +61,6 @@ class RectManager {
     }
 
     setRects(rectArr) {
-        // 统一的批量设置方法
         this.clearRects();
         rectArr.forEach(obj => {
             const rect = (obj instanceof Rect) ? obj : Rect.fromJSON(obj);
@@ -67,20 +76,17 @@ class RectManager {
         this.enableDraw = enable;
         this.renderRects();
     }
-    addRect(rect) {
-        rect.id = this.rectId++;
-        if (!rect.label) rect.label = CHINESE_NUMS[rect.id-1] || String(rect.id);
-        this.rects.push(rect);
-        if (this.onChange) this.onChange();
-    }
+
     removeRectById(id) {
         this.rects = this.rects.filter(r => r.id !== id);
         if (this.onChange) this.onChange();
     }
+
     clearRects() {
         this.rects = [];
         if (this.onChange) this.onChange();
     }
+
     renderRects(selectedRectId = null, onSelect = null, onDrag = null, onResize = null, showAllLabels = false, scale = 1) {
         this.drawArea.querySelectorAll('.rect-box').forEach(e => e.remove());
         this.rects.forEach(r => {
@@ -104,16 +110,11 @@ class RectManager {
                 } else {
                     label.style.color = "#fff";
                 }
-                // 修改：只显示标签文字，不显示序号
                 label.textContent = r.label;
                 label.style.left = '0px';
-                // 标签字号随缩放放大
                 label.style.fontSize = (13 * Math.max(scale, 1)) + 'px';
                 label.style.top = (-22 * Math.max(scale, 1)) + 'px';
                 label.style.position = 'absolute';
-                // 不再缩放整个label（避免太小），只放大字号和top
-                // label.style.transform = `scale(${scale})`;
-                // label.style.transformOrigin = 'left bottom';
                 box.appendChild(label);
             }
 
@@ -122,7 +123,7 @@ class RectManager {
                 box.onmousedown = (e) => onDrag(e, r, box);
             }
 
-            // 只添加右下角缩放手柄
+            // 右下角缩放手柄
             if (selectedRectId === r.id && onResize) {
                 const handle = document.createElement('div');
                 handle.className = 'rect-handle';
@@ -142,7 +143,7 @@ class RectManager {
                 box.appendChild(handle);
             }
 
-            // 选中（无论点击哪里都能选中）
+            // 选中
             if (onSelect) {
                 box.onclick = (e) => {
                     e.stopPropagation();
@@ -153,9 +154,11 @@ class RectManager {
             this.drawArea.appendChild(box);
         });
     }
+
     getRects() {
         return this.rects.map(r => r.toJSON());
     }
+
     static hexToRgba(hex, alpha) {
         let c = hex.replace('#','');
         if (c.length === 3) c = c[0]+c[0]+c[1]+c[1]+c[2]+c[2];
@@ -183,7 +186,9 @@ class RectManager {
                     rect_data.height,
                     rect_data.color,
                     rect_data.id,
-                    rect_data.label
+                    rect_data.label,
+                    rect_data.alternatives,
+                    rect_data.selectedIndex
                 ));
             });
         }
@@ -206,16 +211,15 @@ class RectUI {
         this.previewRect = null;
         this.previewLabel = null;
         this.dragInfo = null;
-        this.showAllLabels = true; // 修改为true，默认显示所有标签
+        this.showAllLabels = true;
         this.otherBtn = otherBtn;
         this.zoomBtn = zoomBtn;
-        this.scaleMode = 'original'; // 'original' or 'fit'
+        this.scaleMode = 'original';
         this.scale = 1;
+        this.activeMenu = null;
 
-        // 确保只创建一个RectManager实例
         this.rectManager = new RectManager(drawArea);
         this.rectManager.onChange = () => {
-            // 使用统一的渲染方式
             this.rectManager.renderRects(
                 this.selectedRectId,
                 this._onSelect.bind(this),
@@ -228,7 +232,7 @@ class RectUI {
         };
 
         this._bindUIEvents();
-        this.rectManager.onChange(); // 初始化渲染和左侧栏
+        this.rectManager.onChange();
         this._autoInitScale();
     }
 
@@ -238,7 +242,6 @@ class RectUI {
             this.rectManager.setDrawMode(true);
             this.drawBtn.disabled = true;
             this.drawBtn.textContent = "添加中";
-            // 修正：画框时也要用当前缩放比例渲染
             this.rectManager.renderRects(
                 this.selectedRectId,
                 this._onSelect.bind(this),
@@ -248,6 +251,7 @@ class RectUI {
                 this.scale
             );
         };
+
         this.colorInput.onchange = () => {
             this.rectColor = this.colorInput.value;
         };
@@ -256,7 +260,6 @@ class RectUI {
         this.drawArea.onmousemove = (e) => this._onDrawAreaMouseMove(e);
         this.drawArea.onmouseup = (e) => this._onDrawAreaMouseUp(e);
 
-        // 拖动和缩放
         document.addEventListener('mousemove', (e) => this._onGlobalMouseMove(e));
         document.addEventListener('mouseup', (e) => this._onGlobalMouseUp(e));
 
@@ -273,7 +276,6 @@ class RectUI {
                     this.scale
                 );
             };
-            // 初始化按钮文本
             this.otherBtn.textContent = this.showAllLabels ? "隐藏标签" : "显示标签";
         }
 
@@ -290,15 +292,18 @@ class RectUI {
             };
             this.zoomBtn.textContent = "适应页面";
         }
-        // 初始化画框按钮文本
+
         this.drawBtn.textContent = "添加框";
+
+        document.addEventListener('click', (e) => {
+            this._closeActiveMenu(e);
+        });
     }
 
     _updateScaleAndRender() {
         const img = this.drawArea.querySelector('img');
         if (!img) return;
         if (this.scaleMode === 'fit') {
-            // 适应页面宽度
             const content = document.querySelector('.content');
             let maxWidth = content ? content.clientWidth : 800;
             maxWidth -= 24;
@@ -310,7 +315,6 @@ class RectUI {
             img.style.zIndex = 0;
             img.style.display = 'block';
         } else {
-            // 原始大小：彻底移除所有宽高限制，强制覆盖max-width
             img.style.width = img.naturalWidth + 'px';
             img.style.height = img.naturalHeight + 'px';
             img.style.maxWidth = 'none';
@@ -319,7 +323,6 @@ class RectUI {
             img.style.minHeight = '0';
             img.style.display = 'block';
         }
-        // 保证所有rect-box都在图片之上
         this._ensureRectsAboveImage();
         this.scale = (this.scaleMode === 'fit') ? (parseFloat(img.style.width) / img.naturalWidth) : 1;
         this.rectManager.renderRects(
@@ -337,14 +340,12 @@ class RectUI {
         const img = this.drawArea.querySelector('img');
         if (e.target !== img) return;
         this.drawing = true;
-        // 修正：拉框时预览框应跟随缩放显示（即预览框的 left/top/width/height 需乘以 this.scale）
         const pos = this._getOffset(e, this.scale);
         this.startX = pos.x;
         this.startY = pos.y;
 
         this.previewRect = document.createElement('div');
         this.previewRect.className = 'rect-box';
-        // 预览框初始位置和大小都要乘以缩放比例
         this.previewRect.style.left = (this.startX * this.scale) + 'px';
         this.previewRect.style.top = (this.startY * this.scale) + 'px';
         this.previewRect.style.width = '0px';
@@ -358,12 +359,6 @@ class RectUI {
         this.previewLabel.style.background = this.rectColor;
         this.previewLabel.style.color = this.rectColor === "#7fffd4" ? "#222" : "#fff";
         const nextId = this.rectManager.rectId;
-        const CHINESE_NUMS = [
-            "一","二","三","四","五","六","七","八","九","十",
-            "十一","十二","十三","十四","十五","十六","十七","十八","十九","二十",
-            "二十一","二十二","二十三","二十四","二十五","二十六","二十七","二十八","二十九","三十"
-        ];
-        // 修改：预览时只显示汉字，不显示序号
         this.previewLabel.textContent = CHINESE_NUMS[nextId-1] || String(nextId);
         this.previewLabel.style.left = '0px';
         this.previewLabel.style.top = '-22px';
@@ -379,18 +374,15 @@ class RectUI {
 
     _onDrawAreaMouseMove(e) {
         if (!this.drawing || !this.previewRect) return;
-        // 修正：拉框时预览框应跟随缩放显示
         const pos = this._getOffset(e, this.scale);
         let x = Math.min(this.startX, pos.x);
         let y = Math.min(this.startY, pos.y);
         let w = Math.abs(pos.x - this.startX);
         let h = Math.abs(pos.y - this.startY);
-        // 保证整数像素
         x = Math.round(x);
         y = Math.round(y);
         w = Math.round(w);
         h = Math.round(h);
-        // 预览框的 left/top/width/height 都要乘以缩放比例
         this.previewRect.style.left = (x * this.scale) + 'px';
         this.previewRect.style.top = (y * this.scale) + 'px';
         this.previewRect.style.width = (w * this.scale) + 'px';
@@ -418,9 +410,7 @@ class RectUI {
             return;
         }
         
-        // 使用统一的Rect创建方式
         const newRect = new Rect(x, y, w, h, this.rectColor);
-        // 使用统一的RectManager添加方式
         this.selectedRectId = this.rectManager.add(newRect);
         
         this.previewRect = null;
@@ -430,7 +420,6 @@ class RectUI {
         this.drawBtn.disabled = false;
         this.drawBtn.textContent = "添加框";
         
-        // 更新显示
         if (this.rectManager.onChange) {
             this.rectManager.onChange();
         }
@@ -449,8 +438,13 @@ class RectUI {
     _onSelect(e, r) {
         if (this.enableDraw) return;
         e.stopPropagation();
+        
+        if (this.activeMenu) {
+            this.activeMenu.remove();
+            this.activeMenu = null;
+        }
+        
         this.selectedRectId = r.id;
-        // 同步更新左右两侧
         this.rectManager.renderRects(
             this.selectedRectId, 
             this._onSelect.bind(this), 
@@ -500,7 +494,6 @@ class RectUI {
         const r = this.dragInfo.rect;
         const scale = this.dragInfo.scale || this.scale || 1;
         if (this.dragInfo.type === 'move') {
-            // 修正：移动时四舍五入，保证整数像素
             let dx = Math.round((e.clientX - this.dragInfo.startX) / scale);
             let dy = Math.round((e.clientY - this.dragInfo.startY) / scale);
             r.x = Math.max(0, Math.round(this.dragInfo.origX + dx));
@@ -508,7 +501,6 @@ class RectUI {
             this.rectManager.renderRects(this.selectedRectId, this._onSelect.bind(this), this._onDrag.bind(this), this._onResize.bind(this), this.showAllLabels, this.scale);
             this.updateRectFormList();
         } else if (this.dragInfo.type === 'resize') {
-            // 修正：缩放时四舍五入，保证整数像素
             let dx = Math.round((e.clientX - this.dragInfo.startX) / scale);
             let dy = Math.round((e.clientY - this.dragInfo.startY) / scale);
             let w = Math.round(this.dragInfo.origW + dx);
@@ -529,12 +521,22 @@ class RectUI {
         }
     }
 
+    _closeActiveMenu(e) {
+        if (this.activeMenu && !this.activeMenu.contains(e.target)) {
+            const triggerBtn = this.activeMenu.triggerButton;
+            if (!triggerBtn || !triggerBtn.contains(e.target)) {
+                this.activeMenu.remove();
+                this.activeMenu = null;
+            }
+        }
+    }
+
     highlightSidebarForm(rectId) {
         const groups = this.rectFormList.querySelectorAll('.form-group');
         groups.forEach(g => g.classList.remove('active'));
         const group = Array.from(groups).find(g => {
-            const label = g.querySelector('span');  // 改为查找 span 元素
-            return label && label.textContent.startsWith(rectId + '.');  // 改为使用 startsWith 匹配
+            const label = g.querySelector('span');
+            return label && label.textContent.startsWith(rectId + '.');
         });
         if (group) {
             group.classList.add('active');
@@ -551,18 +553,22 @@ class RectUI {
         this.rectManager.rects.forEach((r, idx) => {
             const group = document.createElement('div');
             group.className = 'form-group';
-            // 当前选中的框需要高亮显示
             if (this.selectedRectId === r.id) {
                 group.classList.add('active');
             }
 
             group.onclick = (e) => {
                 e.stopPropagation();
+                
+                if (this.activeMenu) {
+                    this.activeMenu.remove();
+                    this.activeMenu = null;
+                }
+                
                 this.selectedRectId = r.id;
                 this.enableDraw = false;
                 this.rectManager.setDrawMode(false);
                 
-                // 同步更新左右两侧
                 this.rectManager.renderRects(
                     this.selectedRectId,
                     this._onSelect.bind(this),
@@ -583,7 +589,6 @@ class RectUI {
             const label = document.createElement('span');
             label.style.fontWeight = 'bold';
             label.style.fontSize = '15px';
-            // 修改：侧边栏保留序号和文字，方便区分
             label.textContent = `${r.id}.${r.label}`;
             row1.appendChild(label);
 
@@ -608,34 +613,116 @@ class RectUI {
             param.textContent = `位置(${r.x},${r.y}) 大小(${r.width}x${r.height})`;
             group.appendChild(param);
 
-            // 第三行：文本输入和颜色选择并排
+            // 第三行：文本输入框 + 小选择按钮 + 颜色选择 (重新调整比例)
             const row3 = document.createElement('div');
             row3.style.display = 'flex';
-            row3.style.gap = '8px';
+            row3.style.gap = '4px';  // 减小间距
             row3.style.alignItems = 'center';
 
+            // 文本输入框 (进一步减小宽度)
             const input = document.createElement('input');
             input.type = 'text';
             input.value = r.label;
-            input.style.flex = '1 1 0';
+            input.style.flex = '1 1 80px';  // 修改：设置最小宽度80px
             input.style.fontSize = '13px';
+            input.style.height = '28px';
+            input.style.padding = '4px 6px';  // 减小padding
+            input.style.minWidth = '80px';  // 设置最小宽度
+            input.style.maxWidth = '120px';  // 设置最大宽度
+            input.onclick = (e) => e.stopPropagation();
             input.onchange = () => {
                 r.label = input.value;
+                label.textContent = `${r.id}.${r.label}`;
                 if (this.rectManager.onChange) this.rectManager.onChange();
             };
             row3.appendChild(input);
 
+            // 小的备选项选择按钮 (保持不变)
+            const selectBtn = document.createElement('button');
+            selectBtn.textContent = '选';
+            selectBtn.type = 'button';
+            selectBtn.className = 'alternatives-btn';
+            selectBtn.style.flex = '0 0 26px';  // 稍微缩小
+            selectBtn.style.fontSize = '11px';
+            selectBtn.style.padding = '0';
+            selectBtn.style.height = '28px';
+            selectBtn.style.borderRadius = '4px';
+            selectBtn.style.border = '1px solid #1976d2';
+            selectBtn.style.background = '#fff';
+            selectBtn.style.color = '#1976d2';
+            selectBtn.style.cursor = 'pointer';
+            selectBtn.style.transition = 'all 0.2s';
+            selectBtn.title = '从备选项中选择';
+            
+            selectBtn.onmouseover = () => {
+                selectBtn.style.background = '#1976d2';
+                selectBtn.style.color = '#fff';
+            };
+            selectBtn.onmouseout = () => {
+                selectBtn.style.background = '#fff';
+                selectBtn.style.color = '#1976d2';
+            };
+            
+            selectBtn.onclick = (ev) => {
+                ev.stopPropagation();
+                
+                if (this.activeMenu) {
+                    this.activeMenu.remove();
+                    this.activeMenu = null;
+                    return;
+                }
+                
+                const menu = document.createElement('div');
+                menu.className = 'alternatives-menu';
+                menu.triggerButton = selectBtn;
+                
+                const rect = selectBtn.getBoundingClientRect();
+                menu.style.left = rect.left + 'px';
+                menu.style.top = (rect.bottom + 2) + 'px';
+                
+                r.alternatives.forEach((alt, index) => {
+                    if (alt && alt.trim()) {
+                        const option = document.createElement('div');
+                        option.className = 'alternatives-option';
+                        option.textContent = alt;
+                        
+                        option.onclick = (e) => {
+                            e.stopPropagation();
+                            r.label = alt;
+                            input.value = alt;
+                            label.textContent = `${r.id}.${r.label}`;
+                            menu.remove();
+                            this.activeMenu = null;
+                            if (this.rectManager.onChange) this.rectManager.onChange();
+                        };
+                        
+                        menu.appendChild(option);
+                    }
+                });
+                
+                document.body.appendChild(menu);
+                this.activeMenu = menu;
+            };
+            row3.appendChild(selectBtn);
+
+            // 颜色选择 (给予更多空间)
             const colorSelect = document.createElement('select');
             colorSelect.className = 'rect-color-select';
-            colorSelect.style.flex = '0 0 90px';
+            colorSelect.style.flex = '0 0 75px';  // 修改：增加到75px
+            colorSelect.style.fontSize = '11px';
+            colorSelect.style.height = '28px';
+            colorSelect.style.padding = '2px 4px';
+            colorSelect.style.border = '1px solid #ccc';
+            colorSelect.style.borderRadius = '4px';
+            colorSelect.onclick = (e) => e.stopPropagation();
             [
-                {value: "#7fffd4", text: "绿色"},
-                {value: "#ff0000", text: "红色"},
-                {value: "#888888", text: "灰色"},
-                {value: "#060ac9", text: "蓝色"},
-                {value: "#097b7e", text: "青色"},
-                {value: "#e4710a", text: "橙色"},
-                {value: "#ffffff", text: "白色"}
+                {value: "#7fffd4", text: "绿"},
+                {value: "#ff0000", text: "红"},
+                {value: "#888888", text: "灰"},
+                {value: "#060ac9", text: "蓝"},
+                {value: "#097b7e", text: "青"},
+                {value: "#e4710a", text: "橙"},
+                {value: "#ffffff", text: "白"}
             ].forEach(opt => {
                 const option = document.createElement('option');
                 option.value = opt.value;
@@ -650,11 +737,9 @@ class RectUI {
             row3.appendChild(colorSelect);
 
             group.appendChild(row3);
-
             this.rectFormList.appendChild(group);
         });
 
-        // 如果有选中的框，确保滚动到视图中
         if (this.selectedRectId) {
             this.highlightSidebarForm(this.selectedRectId);
         }
@@ -672,14 +757,11 @@ class RectUI {
     }
 
     _ensureRectsAboveImage() {
-        // 保证所有.rect-box都在图片之后（即在图片上方）
         const img = this.drawArea.querySelector('img');
         if (!img) return;
-        // 获取所有rect-box
         const rects = Array.from(this.drawArea.querySelectorAll('.rect-box'));
         rects.forEach(rect => {
             if (rect.nextSibling !== img.nextSibling) {
-                // 移动到图片之后
                 if (img.nextSibling) {
                     this.drawArea.insertBefore(rect, img.nextSibling);
                 } else {
@@ -690,31 +772,26 @@ class RectUI {
         });
     }
 
-    // 添加外部调用接口
     addRectFromExternal(x, y, width, height, color = "#7fffd4", label = null) {
-        // 使用统一的Rect创建方式
         const newRect = new Rect(
             Math.round(x),
             Math.round(y),
             Math.round(width),
             Math.round(height),
             color,
-            null,  // id会由manager自动分配
+            null,
             label
         );
         
-        // 使用统一的RectManager添加方式
         this.selectedRectId = this.rectManager.add(newRect);
         
-        // 更新显示
         if (this.rectManager.onChange) {
             this.rectManager.onChange();
         }
         
-        // 高亮显示新添加的框
         this.highlightSidebarForm(this.selectedRectId);
         
-        return this.selectedRectId;  // 返回新框的ID
+        return this.selectedRectId;
     }
 }
 

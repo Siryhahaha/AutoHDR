@@ -50,6 +50,7 @@
             </div>
         </div>
     </div>
+    <script src="{{ url_for('static', filename='js/loading.js') }}"></script>
     <script>
     // 选择文件后显示文件名
     const fileInput = document.getElementById('file');
@@ -263,10 +264,19 @@
             });
     }
 
-    // “开始处理”按钮提交表单
+    // "开始处理"按钮提交表单
     startBtn.onclick = function() {
         if (!currentFile) return;
-        // 用左侧form提交
+        
+        // 显示带进度的加载框
+        const progressStages = [
+            '正在初始化模型...',
+            '正在进行OCR文字识别...',
+            '正在检测损坏区域...',
+            '正在生成识别结果...'
+        ];
+        loadingModal.showWithProgress('正在处理', progressStages);
+        
         uploadForm.submit();
     };
 
