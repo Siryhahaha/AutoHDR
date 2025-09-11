@@ -171,6 +171,72 @@ def process_rect_results(all_rect_results):
 
     return rects
 
+def process_predict_results(extra_num_ocr_prob_dict):
+    """
+    处理predict结果，生成矩形框数据
+    """
+    rects = []
+    id_counter = 1
+    
+    # 清空之前的映射关系
+    rect_id_to_extra_key_mapping.clear()
+    
+    for key, bbox_info in extra_num_ocr_prob_dict.items():
+        if 'extra_' in key:  # 只处理需要预测的框
+            bbox = bbox_info['bbox']
+            x, y, w, h = bbox
+            
+            # 获取预测的文字
+            predicted_text = bbox_info.get('txt', '')
+            
+            # 获取备选项（LLM + OCR 融合后的top5）
+            alternatives = []
+            if 'ocr_llm_topk' in bbox_info:
+                alternatives = bbox_info['ocr_llm_topk'][:5]
+            elif 'alternatives' in bbox_info:
+                alternatives = bbox_info['alternatives'][:5]
+            else:
+                alternatives = [predicted_text]
+            
+            # 确保有5个选项
+            while len(alternatives) < 5:
+                alternatives.append(f"选项{len(alternatives)+1}")
+            
+            # 根据预测质量设置颜色
+            color = "#ff6b35"  # 橙色表示预测结果
+            if 'llm_prob' in bbox_info and bbox_info['llm_prob']:
+                # 如果有LLM概率且较高，使用蓝色
+                if bbox_info['llm_prob'][0][1] > 0.8:
+                    color = "#2196f3"  # 蓝色表示高置信度预测
+            
+            rect = {
+                "x": int(x),
+                "y": int(y),
+                "width": int(w),
+                "height": int(h),
+                "color": color,
+                "label": predicted_text,
+                "id": id_counter,
+                "alternatives": alternatives,
+                "selectedIndex": 0
+            }
+            rects.append(rect)
+            
+            # 建立ID映射关系 - 存储完整的坐标信息用于匹配
+            rect_id_to_extra_key_mapping[id_counter] = {
+                'extra_key': key,
+                'bbox_xywh': (x, y, w, h)  # 存储extra_dict中的bbox格式（x,y,w,h）
+            }
+            id_counter += 1
+    
+    if not rects:
+        rects = [
+            RectInterface.create_rect_data(150, 300, 80, 40, "#ff6b35", "预测结果为空", 
+                                         ["预测结果为空", "选项1", "选项2", "选项3", "选项4"])
+        ]
+    
+    return rects
+
 @app.route('/upload', methods=['POST'])
 def upload_file():
     logs = []
@@ -411,69 +477,6 @@ def predict_page():
         return render_template('localize_results.html', 
                              logs=[f"预测阶段异常：{str(e)}", f"详细错误：{traceback.format_exc()}"])
 
-def process_predict_results(extra_num_ocr_prob_dict):
-    """
-    处理predict结果，生成矩形框数据
-    """
-    rects = []
-    id_counter = 1
-    
-    # 清空之前的映射关系
-    rect_id_to_extra_key_mapping.clear()
-    
-    for key, bbox_info in extra_num_ocr_prob_dict.items():
-        if 'extra_' in key:  # 只处理需要预测的框
-            bbox = bbox_info['bbox']
-            x, y, w, h = bbox
-            
-            # 获取预测的文字
-            predicted_text = bbox_info.get('txt', '')
-            
-            # 获取备选项（LLM + OCR 融合后的top5）
-            alternatives = []
-            if 'ocr_llm_topk' in bbox_info:
-                alternatives = bbox_info['ocr_llm_topk'][:5]
-            elif 'alternatives' in bbox_info:
-                alternatives = bbox_info['alternatives'][:5]
-            else:
-                alternatives = [predicted_text]
-            
-            # 确保有5个选项
-            while len(alternatives) < 5:
-                alternatives.append(f"选项{len(alternatives)+1}")
-            
-            # 根据预测质量设置颜色
-            color = "#ff6b35"  # 橙色表示预测结果
-            if 'llm_prob' in bbox_info and bbox_info['llm_prob']:
-                # 如果有LLM概率且较高，使用蓝色
-                if bbox_info['llm_prob'][0][1] > 0.8:
-                    color = "#2196f3"  # 蓝色表示高置信度预测
-            
-            rect = {
-                "x": int(x),
-                "y": int(y),
-                "width": int(w),
-                "height": int(h),
-                "color": color,
-                "label": predicted_text,
-                "id": id_counter,
-                "alternatives": alternatives,
-                "selectedIndex": 0
-            }
-            rects.append(rect)
-            
-            # 建立ID映射关系
-            rect_id_to_extra_key_mapping[id_counter] = key
-            id_counter += 1
-    
-    if not rects:
-        rects = [
-            RectInterface.create_rect_data(150, 300, 80, 40, "#ff6b35", "预测结果为空", 
-                                         ["预测结果为空", "选项1", "选项2", "选项3", "选项4"])
-        ]
-    
-    return rects
-
 @app.route('/restore', methods=['POST'])
 def restore_page():
     logs = []
@@ -528,13 +531,50 @@ def restore_page():
                         rect_w = rect.get('width', 0)
                         rect_h = rect.get('height', 0)
                         
-                        # 在extra_num_ocr_prob_dict中寻找匹配的框
+                        # 优先使用映射关系直接找到对应的extra_key
+                        mapping_info = rect_id_to_extra_key_mapping.get(rect_id)
+                        if mapping_info and mapping_info['extra_key'] in extra_num_ocr_prob_dict:
+                            extra_key = mapping_info['extra_key']
+                            
+                            # 验证坐标是否匹配（防止数据不一致）
+                            stored_bbox = mapping_info['bbox_xywh']
+                            if (abs(stored_bbox[0] - rect_x) <= 2 and 
+                                abs(stored_bbox[1] - rect_y) <= 2 and
+                                abs(stored_bbox[2] - rect_w) <= 2 and
+                                abs(stored_bbox[3] - rect_h) <= 2):
+                                
+                                # 直接修改extra_num_ocr_prob_dict
+                                extra_num_ocr_prob_dict[extra_key]['txt'] = selected_text
+                                
+                                # 更新alternatives，将选中的文字移到第一位
+                                if 'alternatives' in extra_num_ocr_prob_dict[extra_key]:
+                                    old_alternatives = extra_num_ocr_prob_dict[extra_key]['alternatives'].copy()
+                                    if selected_text in old_alternatives:
+                                        old_alternatives.remove(selected_text)
+                                    extra_num_ocr_prob_dict[extra_key]['alternatives'] = [selected_text] + old_alternatives
+                                
+                                # 更新ocr_llm_topk（如果存在）
+                                if 'ocr_llm_topk' in extra_num_ocr_prob_dict[extra_key]:
+                                    old_topk = extra_num_ocr_prob_dict[extra_key]['ocr_llm_topk'].copy()
+                                    if selected_text in old_topk:
+                                        old_topk.remove(selected_text)
+                                    extra_num_ocr_prob_dict[extra_key]['ocr_llm_topk'] = [selected_text] + old_topk
+                                
+                                # 标记为用户修改
+                                extra_num_ocr_prob_dict[extra_key]['user_modified'] = True
+                                modification_count += 1
+                                
+                                logs.append(f"[用户修改] 框{rect_id}({extra_key}) 通过映射匹配 -> {selected_text}")
+                                continue
+                        
+                        # 如果映射关系不匹配，使用坐标匹配（备用方案）
+                        found_match = False
                         for extra_key, bbox_info in extra_num_ocr_prob_dict.items():
-                            if 'bbox' in bbox_info:
+                            if 'bbox' in bbox_info and 'extra_' in extra_key:
                                 bbox = bbox_info['bbox']
                                 bbox_x, bbox_y, bbox_w, bbox_h = bbox
                                 
-                                # 坐标匹配
+                                # 坐标匹配（extra_dict中bbox是(x,y,w,h)格式）
                                 if (abs(bbox_x - rect_x) <= 5 and 
                                     abs(bbox_y - rect_y) <= 5 and
                                     abs(bbox_w - rect_w) <= 5 and
@@ -560,18 +600,32 @@ def restore_page():
                                     # 标记为用户修改
                                     extra_num_ocr_prob_dict[extra_key]['user_modified'] = True
                                     modification_count += 1
+                                    found_match = True
                                     
-                                    logs.append(f"[用户修改] 框{rect_id}({extra_key}) -> {selected_text}")
+                                    logs.append(f"[用户修改] 框{rect_id}({extra_key}) 坐标匹配 -> {selected_text}")
                                     break
+                        
+                        if not found_match:
+                            logs.append(f"[警告] 未找到匹配的框: ID={rect_id}, 坐标({rect_x},{rect_y},{rect_w},{rect_h})")
                 
                 logs.append(f"[用户反馈] 已处理 {modification_count} 个框的修改")
+                
+                # 输出调试信息
+                if modification_count > 0:
+                    logs.append(f"[调试] 修改后的extra_dict示例:")
+                    for key, value in list(extra_num_ocr_prob_dict.items())[:2]:
+                        if 'extra_' in key:
+                            logs.append(f"  {key}: txt='{value.get('txt', '')}', user_modified={value.get('user_modified', False)}")
+                            
             except Exception as e:
                 logs.append(f"[警告] 解析用户反馈数据失败: {str(e)}")
+                import traceback
+                logs.append(f"详细错误: {traceback.format_exc()}")
         
-        # 初始化模型配置并执行restore
+        # 初始化模型配置并执行restore - 传入修改后的extra_num_ocr_prob_dict
         device, opt, img_invert_path = init_model_config(filepath)
         
-        # 执行restore阶段 - 传入修改后的extra_num_ocr_prob_dict
+        # 执行restore阶段 - 现在extra_num_ocr_prob_dict已经包含了用户的最新修改
         restored_image = restore(device, opt, img_invert_path, extra_num_ocr_prob_dict)
         
         # 保存修复后的图像

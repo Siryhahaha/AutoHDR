@@ -271,10 +271,7 @@
         
         // 显示带进度的加载框
         const progressStages = [
-            '正在初始化模型...',
-            '正在进行OCR文字识别...',
-            '正在检测损坏区域...',
-            '正在生成识别结果...'
+            '正在进行字符定位和ocr识别，预计时长1分钟'
         ];
         loadingModal.showWithProgress('正在处理', progressStages);
         

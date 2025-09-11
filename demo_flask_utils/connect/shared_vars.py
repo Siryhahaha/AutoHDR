@@ -11,3 +11,9 @@ user_feedback_modifications = {}
 
 # 存储矩形框ID与extra_num_ocr_prob_dict中key的映射关系
 rect_id_to_extra_key_mapping = {}
+
+# 存储当前的extra_num_ocr_prob_dict（用于在各个阶段间传递）
+current_extra_num_ocr_prob_dict = {}
+
+# 调试信息存储
+debug_info = {}

@@ -34,3 +34,4 @@ reg_model_template.py
 reg_model.py
 reg2base64.py
 test_det.py
+demo_flask_utils/static/outputs/*

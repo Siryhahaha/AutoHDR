@@ -121,11 +121,7 @@
             const nextStepBtn = document.getElementById('next-step-btn');
             nextStepBtn.onclick = function() {
                 const predictStages = [
-                    '准备进入预测阶段...',
-                    '正在加载语言模型...',
-                    '正在分析上下文...',
-                    '正在预测缺失文字...',
-                    '正在生成预测结果...'
+                    '正在进行文字预测，预计时长2分钟以内'
                 ];
                 loadingModal.showWithProgress('正在预测', predictStages);
                 
