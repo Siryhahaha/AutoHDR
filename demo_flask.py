@@ -259,6 +259,34 @@ def upload_file():
                              image_url=None,
                              initial_rects="[]")
 
+@app.route('/update_rects', methods=['POST'])
+def update_rects():
+    """处理用户对矩形框的修改反馈"""
+    try:
+        data = request.get_json()
+        rects_data = data.get('rects', [])
+        
+        # 清空之前的反馈
+        user_feedback_modifications.clear()
+        
+        # 处理每个矩形框的修改
+        for rect in rects_data:
+            rect_id = rect.get('id')
+            selected_index = rect.get('selectedIndex', 0)
+            alternatives = rect.get('alternatives', [])
+            
+            if rect_id and alternatives and selected_index < len(alternatives):
+                selected_text = alternatives[selected_index]
+                user_feedback_modifications[f'rect_{rect_id}'] = {
+                    'selected_text': selected_text,
+                    'selected_index': selected_index,
+                    'bbox': (rect.get('x', 0), rect.get('y', 0), rect.get('width', 0), rect.get('height', 0))
+                }
+        
+        return {'status': 'success', 'message': f'已更新 {len(user_feedback_modifications)} 个框的反馈'}
+    except Exception as e:
+        return {'status': 'error', 'message': f'更新失败: {str(e)}'}
+
 @app.route('/predict', methods=['POST'])
 def predict_page():
     logs = []
@@ -273,12 +301,10 @@ def predict_page():
         
         # 重新构建文件路径
         filepath = None
-        # 先检查是否在uploads目录
         uploads_path = os.path.join(app.static_folder, 'uploads', original_filename)
         if os.path.exists(uploads_path):
             filepath = uploads_path
         else:
-            # 再检查examples目录
             examples_path = os.path.join(app.static_folder, 'images', original_filename)
             if os.path.exists(examples_path):
                 filepath = examples_path
@@ -289,11 +315,76 @@ def predict_page():
         # 初始化模型配置
         device, opt, img_invert_path = init_model_config(filepath)
         
-        # 执行predict阶段 - 这里需要之前localize阶段的结果
-        # 先重新执行localize获取char_str和extra_num_ocr_prob_dict
+        # 先执行localize获取char_str和extra_num_ocr_prob_dict
         char_str, extra_num_ocr_prob_dict = localize(device, opt, img_invert_path)
         
-        # 执行predict
+        # 处理用户的矩形框修改反馈 - 在predict之前修改extra_num_ocr_prob_dict
+        if rects_data:
+            try:
+                rects_list = json.loads(rects_data)
+                modification_count = 0
+                
+                # 首先建立坐标到extra_key的映射
+                coord_to_extra_key = {}
+                for extra_key, bbox_info in extra_num_ocr_prob_dict.items():
+                    if 'bbox' in bbox_info:
+                        bbox = bbox_info['bbox']
+                        coord_key = f"{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}"
+                        coord_to_extra_key[coord_key] = extra_key
+                
+                for rect in rects_list:
+                    rect_id = rect.get('id')
+                    selected_index = rect.get('selectedIndex', 0)
+                    alternatives = rect.get('alternatives', [])
+                    
+                    if rect_id and alternatives and selected_index < len(alternatives):
+                        selected_text = alternatives[selected_index]
+                        rect_x = rect.get('x', 0)
+                        rect_y = rect.get('y', 0)
+                        rect_w = rect.get('width', 0)
+                        rect_h = rect.get('height', 0)
+                        
+                        # 寻找匹配的extra_key
+                        found_match = False
+                        for extra_key, bbox_info in extra_num_ocr_prob_dict.items():
+                            if 'bbox' in bbox_info:
+                                bbox = bbox_info['bbox']
+                                bbox_x, bbox_y, bbox_w, bbox_h = bbox
+                                
+                                # 坐标匹配 (考虑一些容差)
+                                if (abs(bbox_x - rect_x) <= 5 and 
+                                    abs(bbox_y - rect_y) <= 5 and
+                                    abs(bbox_w - rect_w) <= 5 and
+                                    abs(bbox_h - rect_h) <= 5):
+                                    
+                                    # 直接修改extra_num_ocr_prob_dict
+                                    extra_num_ocr_prob_dict[extra_key]['txt'] = selected_text
+                                    
+                                    # 更新alternatives，将选中的文字移到第一位
+                                    if 'alternatives' in extra_num_ocr_prob_dict[extra_key]:
+                                        old_alternatives = extra_num_ocr_prob_dict[extra_key]['alternatives'].copy()
+                                        if selected_text in old_alternatives:
+                                            old_alternatives.remove(selected_text)
+                                        extra_num_ocr_prob_dict[extra_key]['alternatives'] = [selected_text] + old_alternatives
+                                    
+                                    # 标记为用户修改
+                                    extra_num_ocr_prob_dict[extra_key]['user_modified'] = True
+                                    modification_count += 1
+                                    found_match = True
+                                    
+                                    logs.append(f"[用户修改] 框{rect_id}({extra_key}) 坐标({bbox_x},{bbox_y},{bbox_w},{bbox_h}) -> {selected_text}")
+                                    break
+                        
+                        if not found_match:
+                            logs.append(f"[警告] 未找到匹配的框: 坐标({rect_x},{rect_y},{rect_w},{rect_h})")
+                
+                logs.append(f"[用户反馈] 已处理 {modification_count} 个框的修改")
+            except Exception as e:
+                logs.append(f"[警告] 解析用户反馈数据失败: {str(e)}")
+                import traceback
+                logs.append(f"详细错误: {traceback.format_exc()}")
+        
+        # 执行predict - 现在extra_num_ocr_prob_dict已经包含了用户的修改
         updated_extra_num_ocr_prob_dict = predict(device, opt, char_str, extra_num_ocr_prob_dict)
         
         # 处理predict结果，生成新的矩形框数据
@@ -316,8 +407,9 @@ def predict_page():
                              extra_dict_json=json.dumps(updated_extra_num_ocr_prob_dict))
                              
     except Exception as e:
+        import traceback
         return render_template('localize_results.html', 
-                             logs=[f"预测阶段异常：{str(e)}"])
+                             logs=[f"预测阶段异常：{str(e)}", f"详细错误：{traceback.format_exc()}"])
 
 def process_predict_results(extra_num_ocr_prob_dict):
     """
@@ -325,6 +417,9 @@ def process_predict_results(extra_num_ocr_prob_dict):
     """
     rects = []
     id_counter = 1
+    
+    # 清空之前的映射关系
+    rect_id_to_extra_key_mapping.clear()
     
     for key, bbox_info in extra_num_ocr_prob_dict.items():
         if 'extra_' in key:  # 只处理需要预测的框
@@ -366,6 +461,9 @@ def process_predict_results(extra_num_ocr_prob_dict):
                 "selectedIndex": 0
             }
             rects.append(rect)
+            
+            # 建立ID映射关系
+            rect_id_to_extra_key_mapping[id_counter] = key
             id_counter += 1
     
     if not rects:
@@ -407,13 +505,73 @@ def restore_page():
         if extra_dict_data:
             try:
                 extra_num_ocr_prob_dict = json.loads(extra_dict_data)
-            except:
-                logs.append("警告：无法解析额外字典数据")
+                logs.append(f"[数据解析] 成功解析包含 {len(extra_num_ocr_prob_dict)} 个框的数据")
+            except Exception as e:
+                logs.append(f"警告：无法解析额外字典数据: {str(e)}")
+                return render_template('predict_results.html', logs=logs)
+        
+        # 处理用户在predict页面的最新修改反馈
+        if rects_data:
+            try:
+                rects_list = json.loads(rects_data)
+                modification_count = 0
+                
+                for rect in rects_list:
+                    rect_id = rect.get('id')
+                    selected_index = rect.get('selectedIndex', 0)
+                    alternatives = rect.get('alternatives', [])
+                    
+                    if rect_id and alternatives and selected_index < len(alternatives):
+                        selected_text = alternatives[selected_index]
+                        rect_x = rect.get('x', 0)
+                        rect_y = rect.get('y', 0)
+                        rect_w = rect.get('width', 0)
+                        rect_h = rect.get('height', 0)
+                        
+                        # 在extra_num_ocr_prob_dict中寻找匹配的框
+                        for extra_key, bbox_info in extra_num_ocr_prob_dict.items():
+                            if 'bbox' in bbox_info:
+                                bbox = bbox_info['bbox']
+                                bbox_x, bbox_y, bbox_w, bbox_h = bbox
+                                
+                                # 坐标匹配
+                                if (abs(bbox_x - rect_x) <= 5 and 
+                                    abs(bbox_y - rect_y) <= 5 and
+                                    abs(bbox_w - rect_w) <= 5 and
+                                    abs(bbox_h - rect_h) <= 5):
+                                    
+                                    # 直接修改extra_num_ocr_prob_dict
+                                    extra_num_ocr_prob_dict[extra_key]['txt'] = selected_text
+                                    
+                                    # 更新alternatives
+                                    if 'alternatives' in extra_num_ocr_prob_dict[extra_key]:
+                                        old_alternatives = extra_num_ocr_prob_dict[extra_key]['alternatives'].copy()
+                                        if selected_text in old_alternatives:
+                                            old_alternatives.remove(selected_text)
+                                        extra_num_ocr_prob_dict[extra_key]['alternatives'] = [selected_text] + old_alternatives
+                                    
+                                    # 更新ocr_llm_topk
+                                    if 'ocr_llm_topk' in extra_num_ocr_prob_dict[extra_key]:
+                                        old_topk = extra_num_ocr_prob_dict[extra_key]['ocr_llm_topk'].copy()
+                                        if selected_text in old_topk:
+                                            old_topk.remove(selected_text)
+                                        extra_num_ocr_prob_dict[extra_key]['ocr_llm_topk'] = [selected_text] + old_topk
+                                    
+                                    # 标记为用户修改
+                                    extra_num_ocr_prob_dict[extra_key]['user_modified'] = True
+                                    modification_count += 1
+                                    
+                                    logs.append(f"[用户修改] 框{rect_id}({extra_key}) -> {selected_text}")
+                                    break
+                
+                logs.append(f"[用户反馈] 已处理 {modification_count} 个框的修改")
+            except Exception as e:
+                logs.append(f"[警告] 解析用户反馈数据失败: {str(e)}")
         
         # 初始化模型配置并执行restore
         device, opt, img_invert_path = init_model_config(filepath)
         
-        # 执行restore阶段
+        # 执行restore阶段 - 传入修改后的extra_num_ocr_prob_dict
         restored_image = restore(device, opt, img_invert_path, extra_num_ocr_prob_dict)
         
         # 保存修复后的图像
@@ -433,8 +591,9 @@ def restore_page():
                              restore_filename=restore_filename)
                              
     except Exception as e:
+        import traceback
         return render_template('predict_results.html', 
-                             logs=[f"修复阶段异常：{str(e)}"])
+                             logs=[f"修复阶段异常：{str(e)}", f"详细错误：{traceback.format_exc()}"])
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0',port=5001,  debug=True)

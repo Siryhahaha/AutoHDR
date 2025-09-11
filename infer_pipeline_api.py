@@ -307,6 +307,34 @@ def predict(device, opt, char_str, extra_num_ocr_prob_dict):
     model_name_or_path = opt.model_name_or_path
     model, tokenizer = model_init(model_name_or_path)
 
+    # 应用用户反馈修改
+    if user_feedback_modifications:
+        print(f'应用用户反馈修改: {len(user_feedback_modifications)} 个框')
+        for modification_key, modification_data in user_feedback_modifications.items():
+            selected_text = modification_data['selected_text']
+            bbox_target = modification_data['bbox']
+            
+            # 在extra_num_ocr_prob_dict中找到对应的框并更新
+            for key, bbox_info in extra_num_ocr_prob_dict.items():
+                if 'bbox' in bbox_info:
+                    bbox_current = bbox_info['bbox']
+                    # 通过坐标匹配找到对应的框
+                    if (abs(bbox_current[0] - bbox_target[0]) < 5 and 
+                        abs(bbox_current[1] - bbox_target[1]) < 5 and
+                        abs(bbox_current[2] - bbox_target[2]) < 5 and
+                        abs(bbox_current[3] - bbox_target[3]) < 5):
+                        # 更新文字内容
+                        bbox_info['txt'] = selected_text
+                        # 如果有备选项，将选中的文字移到第一位
+                        if 'alternatives' in bbox_info and selected_text in bbox_info['alternatives']:
+                            alternatives = bbox_info['alternatives'].copy()
+                            alternatives.remove(selected_text)
+                            bbox_info['alternatives'] = [selected_text] + alternatives
+                        # 标记为已被用户修改
+                        bbox_info['user_modified'] = True
+                        print(f'已应用用户修改: {key} -> {selected_text}')
+                        break
+
     messages = [
         {
             "role": "system",
@@ -380,13 +408,18 @@ def predict(device, opt, char_str, extra_num_ocr_prob_dict):
                     next_token = tokenizer.decode([pred_text_tokens[next_token_id+num_next_chartoken_count]])
                     token_id_list.append(idx + num_next_chartoken_count)
                     scores_id_list.append(idx + num_next_chartoken_count - input_tokens_length)
-                    # import pdb;pdb.set_trace()
+                    # import pdb; import pdb.set_trace()
                 if token not in special_token_positions_dict.keys():
                     special_token_positions_dict[token] = (scores_id_list, tokenizer.decode([pred_text_tokens[i] for i in token_id_list]))
 
         top_k = 5
         for key, value in extra_num_ocr_prob_dict.items():
             if 'extra_' in key and key in special_token_positions_dict.keys():
+                # 如果用户已修改此框，跳过LLM预测
+                if value.get('user_modified', False):
+                    print(f'跳过用户已修改的框: {key}')
+                    continue
+
                 special_token_idx = special_token_positions_dict[key][0]
                 pred_vague_char = special_token_positions_dict[key][1]
                 if pred_vague_char == value:
@@ -437,6 +470,28 @@ def predict(device, opt, char_str, extra_num_ocr_prob_dict):
 def restore(device, opt, img_invert_path, extra_num_ocr_prob_dict):
     print('开始加载修复模型')
     img_invert= Image.open(img_invert_path)
+
+    # 应用用户反馈修改
+    if user_feedback_modifications:
+        print(f'在修复阶段应用用户反馈修改: {len(user_feedback_modifications)} 个框')
+        for modification_key, modification_data in user_feedback_modifications.items():
+            selected_text = modification_data['selected_text']
+            bbox_target = modification_data['bbox']
+            
+            # 在extra_num_ocr_prob_dict中找到对应的框并更新
+            for key, bbox_info in extra_num_ocr_prob_dict.items():
+                if 'bbox' in bbox_info:
+                    bbox_current = bbox_info['bbox']
+                    # 通过坐标匹配找到对应的框
+                    if (abs(bbox_current[0] - bbox_target[0]) < 5 and 
+                        abs(bbox_current[1] - bbox_target[1]) < 5 and
+                        abs(bbox_current[2] - bbox_target[2]) < 5 and
+                        abs(bbox_current[3] - bbox_target[3]) < 5):
+                        # 更新文字内容
+                        bbox_info['txt'] = selected_text
+                        bbox_info['user_modified'] = True
+                        print(f'修复阶段已应用用户修改: {key} -> {selected_text}')
+                        break
 
     ############### 加载修复模型 ###################
     unet = UNet2DModel.from_pretrained(pretrained_model_name_or_path='ckpt/unet')
@@ -622,7 +677,7 @@ def restore(device, opt, img_invert_path, extra_num_ocr_prob_dict):
             mask_image.paste(mask, (rel_x_min, rel_y_min, rel_x_max, rel_y_max))
             # degraded_image.paste(mask, (rel_x_min, rel_y_min, rel_x_max, rel_y_max)) # 考虑要不要inpainting修复
             # import pdb; pdb.set_trace()
-            # 渲染单字图片
+            # 渲染单字图片时使用用户修改后的文字
             single_char_img = render_char_with_font_T(bbox_info['txt'])
             # 将单字图片resize成box的大小
             single_char_img = single_char_img.resize((rel_x_max - rel_x_min, rel_y_max - rel_y_min), Image.Resampling.LANCZOS)

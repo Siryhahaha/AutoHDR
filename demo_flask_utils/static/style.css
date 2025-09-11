@@ -29,6 +29,7 @@ body { margin: 0; padding: 0; }
     padding: 6px 18px;
     cursor: pointer;
     transition: background 0.2s, color 0.2s;
+    text-decoration: none; /* 添加这一行以移除下划线 */
 }
 .header__nav-btn:hover {
     background: #1976d2;
